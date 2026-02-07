@@ -75,6 +75,29 @@ namespace TraitEmulation.Runtime.Tests
         }
 
         [TestMethod]
+        public void ExternalType_ExtensionMethod_ZeroCopy()
+        {
+            var sysPoint = new ExternalPoint { X = 10, Y = 20 };
+            ref readonly var coord = ref sysPoint.AsCoordinate();
+
+            Assert.AreEqual(10, coord.X);
+            Assert.AreEqual(20, coord.Y);
+        }
+
+        [TestMethod]
+        public void ExternalType_ZeroCopy_PointerIdentity()
+        {
+            var sysPoint = new ExternalPoint { X = 10, Y = 20 };
+            ref readonly var coord = ref sysPoint.AsCoordinate();
+
+            // Pointer identity proves zero-copy — the layout overlays the original struct
+            Assert.IsTrue(Unsafe.AreSame(
+                ref Unsafe.AsRef(in sysPoint.X),
+                ref Unsafe.AsRef(in coord.X)),
+                "External type adapter is not zero-copy - references differ!");
+        }
+
+        [TestMethod]
         [Ignore("TraitSpan not yet implemented")]
         public void MutableTraitSpan_WritesBack_ToSourceFields()
         {

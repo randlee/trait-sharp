@@ -1,8 +1,23 @@
 using System.Runtime.InteropServices;
 using TraitEmulation;
+using TraitEmulation.Runtime.Tests;
+
+// Register ExternalPoint for ICoordinate trait — simulates an external type we can't modify
+[assembly: RegisterTraitImpl(typeof(ICoordinate), typeof(ExternalPoint))]
 
 namespace TraitEmulation.Runtime.Tests
 {
+    /// <summary>
+    /// Simulates an external type we cannot modify (non-partial, like System.Drawing.Point).
+    /// Registered for ICoordinate via assembly-level [RegisterTraitImpl] attribute above.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ExternalPoint
+    {
+        public int X;
+        public int Y;
+    }
+
     [Trait(GenerateLayout = true)]
     public partial interface ICoordinate
     {
