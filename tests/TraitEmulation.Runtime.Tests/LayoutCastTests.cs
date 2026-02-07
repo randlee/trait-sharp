@@ -98,7 +98,6 @@ namespace TraitEmulation.Runtime.Tests
         }
 
         [TestMethod]
-        [Ignore("TraitSpan not yet implemented")]
         public void MutableTraitSpan_WritesBack_ToSourceFields()
         {
             var rects = new Rectangle[]
@@ -107,20 +106,19 @@ namespace TraitEmulation.Runtime.Tests
                 new() { X = 1, Y = 1, Width = 20, Height = 20 },
             };
 
-            // TODO: Re-enable when TraitSpan factory methods are implemented
-            // foreach (ref var pos in rects.AsSpan().AsPoint2DTraitSpan())
-            // {
-            //     pos.X += 100;
-            //     pos.Y += 200;
-            // }
+            foreach (ref var pos in rects.AsSpan().AsPoint2DTraitSpan())
+            {
+                pos.X += 100;
+                pos.Y += 200;
+            }
 
-            // Assert.AreEqual(100, rects[0].X);
-            // Assert.AreEqual(200, rects[0].Y);
-            // Assert.AreEqual(101, rects[1].X);
-            // Assert.AreEqual(201, rects[1].Y);
-            // // Size fields untouched
-            // Assert.AreEqual(10, rects[0].Width);
-            // Assert.AreEqual(20, rects[1].Width);
+            Assert.AreEqual(100, rects[0].X);
+            Assert.AreEqual(200, rects[0].Y);
+            Assert.AreEqual(101, rects[1].X);
+            Assert.AreEqual(201, rects[1].Y);
+            // Size fields untouched
+            Assert.AreEqual(10, rects[0].Width);
+            Assert.AreEqual(20, rects[1].Width);
         }
     }
 }

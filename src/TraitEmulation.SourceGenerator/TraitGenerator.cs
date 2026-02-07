@@ -328,6 +328,13 @@ namespace TraitEmulation.SourceGenerator
                     var staticCode = StaticMethodsGenerator.Generate(trait);
                     context.AddSource($"{trait.Name}.Static.g.cs", staticCode);
                 }
+
+                // Generate span factory extension methods
+                if (trait.GenerateLayout)
+                {
+                    var spanFactoryCode = TraitSpanFactoryGenerator.Generate(trait);
+                    context.AddSource($"{trait.Name}.SpanFactory.g.cs", spanFactoryCode);
+                }
             }
 
             // Generate implementations
