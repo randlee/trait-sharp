@@ -17,6 +17,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TraitEmulation.Generator.Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TraitEmulation.Runtime.Tests", "tests\TraitEmulation.Runtime.Tests\TraitEmulation.Runtime.Tests.csproj", "{1244F41A-B645-4924-93AD-E1C8A5DD389D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TraitExample", "samples\TraitExample\TraitExample.csproj", "{E88EA72D-8E91-4471-8967-9D184EC951FE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -87,6 +91,18 @@ Global
 		{1244F41A-B645-4924-93AD-E1C8A5DD389D}.Release|x64.Build.0 = Release|Any CPU
 		{1244F41A-B645-4924-93AD-E1C8A5DD389D}.Release|x86.ActiveCfg = Release|Any CPU
 		{1244F41A-B645-4924-93AD-E1C8A5DD389D}.Release|x86.Build.0 = Release|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Debug|x64.Build.0 = Debug|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Debug|x86.Build.0 = Debug|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Release|x64.ActiveCfg = Release|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Release|x64.Build.0 = Release|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Release|x86.ActiveCfg = Release|Any CPU
+		{E88EA72D-8E91-4471-8967-9D184EC951FE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +113,6 @@ Global
 		{5097D569-690B-4E92-96C7-95C9D267EC50} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{E30E26F2-0ABC-4E49-BCEB-C92FEB0A00D7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{1244F41A-B645-4924-93AD-E1C8A5DD389D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{E88EA72D-8E91-4471-8967-9D184EC951FE} = {5D20AA90-6969-D8BD-9DCD-8634F4692FDA}
 	EndGlobalSection
 EndGlobal

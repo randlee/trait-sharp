@@ -19,6 +19,13 @@ namespace TraitEmulation.Runtime
         private readonly int _stride;      // bytes between successive source elements
         private readonly int _rowStride;   // bytes between successive rows (stride * width)
 
+        /// <summary>
+        /// Creates a ReadOnlyTraitSpan2D from a byte reference, stride, and dimensions.
+        /// </summary>
+        /// <param name="reference">Reference to the first trait-view byte (base + offset of element 0).</param>
+        /// <param name="stride">Byte distance between successive source elements (sizeof source type).</param>
+        /// <param name="width">Number of columns.</param>
+        /// <param name="height">Number of rows.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlyTraitSpan2D(ref byte reference, int stride, int width, int height)
         {
@@ -60,6 +67,7 @@ namespace TraitEmulation.Runtime
             get => _width * _height;
         }
 
+        /// <summary>Gets a value indicating whether this span is empty.</summary>
         public bool IsEmpty
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -125,6 +133,7 @@ namespace TraitEmulation.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public RowEnumerator EnumerateRows() => new(this);
 
+        /// <summary>Enumerates rows of a ReadOnlyTraitSpan2D.</summary>
         public ref struct RowEnumerator
         {
             private readonly ReadOnlyTraitSpan2D<TLayout> _span;
@@ -137,19 +146,23 @@ namespace TraitEmulation.Runtime
                 _row = -1;
             }
 
+            /// <summary>Advances the enumerator to the next row.</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext() => ++_row < _span._height;
 
+            /// <summary>Gets the row at the current position of the enumerator.</summary>
             public ReadOnlyTraitSpan<TLayout> Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get => _span.GetRow(_row);
             }
 
+            /// <summary>Returns the enumerator itself for foreach support.</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public RowEnumerator GetEnumerator() => this;
         }
 
+        /// <summary>Returns an empty ReadOnlyTraitSpan2D.</summary>
         public static ReadOnlyTraitSpan2D<TLayout> Empty => default;
     }
 }

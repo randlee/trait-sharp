@@ -19,6 +19,13 @@ namespace TraitEmulation.Runtime
         private readonly int _stride;
         private readonly int _rowStride;
 
+        /// <summary>
+        /// Creates a TraitSpan2D from a byte reference, stride, and dimensions.
+        /// </summary>
+        /// <param name="reference">Reference to the first trait-view byte (base + offset of element 0).</param>
+        /// <param name="stride">Byte distance between successive source elements (sizeof source type).</param>
+        /// <param name="width">Number of columns.</param>
+        /// <param name="height">Number of rows.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public TraitSpan2D(ref byte reference, int stride, int width, int height)
         {
@@ -39,30 +46,37 @@ namespace TraitEmulation.Runtime
             _rowStride = rowStride;
         }
 
+        /// <summary>Gets the width (number of columns).</summary>
         public int Width
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _width;
         }
 
+        /// <summary>Gets the height (number of rows).</summary>
         public int Height
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _height;
         }
 
+        /// <summary>Gets the total number of elements (Width * Height).</summary>
         public int Length
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _width * _height;
         }
 
+        /// <summary>Gets a value indicating whether this span is empty.</summary>
         public bool IsEmpty
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _width == 0 || _height == 0;
         }
 
+        /// <summary>
+        /// Returns a mutable reference to the element at (row, col).
+        /// </summary>
         public ref TLayout this[int row, int col]
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -76,6 +90,9 @@ namespace TraitEmulation.Runtime
             }
         }
 
+        /// <summary>
+        /// Gets a single row as a TraitSpan.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public TraitSpan<TLayout> GetRow(int row)
         {
@@ -87,6 +104,9 @@ namespace TraitEmulation.Runtime
                 _width);
         }
 
+        /// <summary>
+        /// Gets a sub-region of this 2D span.
+        /// </summary>
         public TraitSpan2D<TLayout> Slice(int rowStart, int colStart, int height, int width)
         {
             if ((uint)rowStart > (uint)_height || (uint)height > (uint)(_height - rowStart))
@@ -102,6 +122,9 @@ namespace TraitEmulation.Runtime
                 _rowStride);
         }
 
+        /// <summary>
+        /// Flattens to a 1D TraitSpan (row-major order).
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public TraitSpan<TLayout> AsSpan() =>
             new(ref _reference, _stride, _width * _height);
@@ -118,10 +141,13 @@ namespace TraitEmulation.Runtime
             }
         }
 
+        /// <summary>Clears all trait-view fields to default.</summary>
         public void Clear() => Fill(default);
 
+        /// <summary>Enumerates rows.</summary>
         public RowEnumerator EnumerateRows() => new(this);
 
+        /// <summary>Enumerates rows of a TraitSpan2D.</summary>
         public ref struct RowEnumerator
         {
             private readonly TraitSpan2D<TLayout> _span;
@@ -134,22 +160,29 @@ namespace TraitEmulation.Runtime
                 _row = -1;
             }
 
+            /// <summary>Advances the enumerator to the next row.</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext() => ++_row < _span._height;
 
+            /// <summary>Gets the row at the current position of the enumerator.</summary>
             public TraitSpan<TLayout> Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get => _span.GetRow(_row);
             }
 
+            /// <summary>Returns the enumerator itself for foreach support.</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public RowEnumerator GetEnumerator() => this;
         }
 
+        /// <summary>
+        /// Implicit conversion to ReadOnlyTraitSpan2D.
+        /// </summary>
         public static implicit operator ReadOnlyTraitSpan2D<TLayout>(TraitSpan2D<TLayout> span) =>
             new(ref span._reference, span._stride, span._width, span._height);
 
+        /// <summary>Returns an empty TraitSpan2D.</summary>
         public static TraitSpan2D<TLayout> Empty => default;
     }
 }

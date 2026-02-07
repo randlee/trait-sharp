@@ -17,6 +17,12 @@ namespace TraitEmulation.Runtime
         private readonly int _length;
         private readonly int _stride;
 
+        /// <summary>
+        /// Creates a TraitSpan from a byte reference, stride, and length.
+        /// </summary>
+        /// <param name="reference">Reference to the first trait-view byte (base + offset of element 0).</param>
+        /// <param name="stride">Byte distance between successive source elements (sizeof source type).</param>
+        /// <param name="length">Number of elements.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public TraitSpan(ref byte reference, int stride, int length)
         {
@@ -25,12 +31,14 @@ namespace TraitEmulation.Runtime
             _length = length;
         }
 
+        /// <summary>Gets the number of elements in the span.</summary>
         public int Length
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _length;
         }
 
+        /// <summary>Gets a value indicating whether this span is empty.</summary>
         public bool IsEmpty
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -52,6 +60,9 @@ namespace TraitEmulation.Runtime
             }
         }
 
+        /// <summary>
+        /// Forms a slice out of the current span starting at the specified index.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public TraitSpan<TLayout> Slice(int start)
         {
@@ -63,6 +74,10 @@ namespace TraitEmulation.Runtime
                 _length - start);
         }
 
+        /// <summary>
+        /// Forms a slice out of the current span starting at the specified index
+        /// for the specified length.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public TraitSpan<TLayout> Slice(int start, int length)
         {
@@ -102,6 +117,9 @@ namespace TraitEmulation.Runtime
         /// <summary>Clears all trait-view fields to default.</summary>
         public void Clear() => Fill(default);
 
+        /// <summary>
+        /// Copies the contents of this span to a new array.
+        /// </summary>
         public TLayout[] ToArray()
         {
             if (_length == 0) return Array.Empty<TLayout>();
@@ -110,9 +128,11 @@ namespace TraitEmulation.Runtime
             return array;
         }
 
+        /// <summary>Returns an enumerator for this span.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Enumerator GetEnumerator() => new(this);
 
+        /// <summary>Enumerates elements of a TraitSpan.</summary>
         public ref struct Enumerator
         {
             private readonly ref byte _reference;
@@ -129,6 +149,7 @@ namespace TraitEmulation.Runtime
                 _index = -1;
             }
 
+            /// <summary>Advances the enumerator to the next element.</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext()
             {
@@ -141,6 +162,7 @@ namespace TraitEmulation.Runtime
                 return false;
             }
 
+            /// <summary>Gets the element at the current position of the enumerator.</summary>
             public ref TLayout Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -155,6 +177,7 @@ namespace TraitEmulation.Runtime
         public static implicit operator ReadOnlyTraitSpan<TLayout>(TraitSpan<TLayout> span) =>
             new(ref span._reference, span._stride, span._length);
 
+        /// <summary>Returns an empty TraitSpan.</summary>
         public static TraitSpan<TLayout> Empty => default;
     }
 }
