@@ -6,6 +6,13 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>TraitEmulation.Runtime</RootNamespace>
+    <PackageId>TraitEmulation.Runtime</PackageId>
+    <Description>Runtime types for TraitEmulation: TraitSpan, ReadOnlyTraitSpan, and 2D variants for strided trait-view iteration over struct arrays.</Description>
+    <PackageTags>traits;span;ref-struct;high-performance</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
 </Project>

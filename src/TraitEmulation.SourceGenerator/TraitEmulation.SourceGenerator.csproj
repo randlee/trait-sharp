@@ -8,6 +8,15 @@
     <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
     <NoWarn>RS2008</NoWarn>
     <RootNamespace>TraitEmulation.SourceGenerator</RootNamespace>
+    <PackageId>TraitEmulation</PackageId>
+    <Description>Rust-like trait emulation for C#. Zero-cost polymorphism over value types without boxing. Source generator with compile-time layout verification.</Description>
+    <PackageTags>traits;polymorphism;codegen;roslyn;source-generator</PackageTags>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <!-- No symbol package for analyzer-only packages -->
+    <IncludeSymbols>false</IncludeSymbols>
+    <!-- Suppress doc warnings and NU5128 (expected for analyzer packages with no lib/) -->
+    <NoWarn>$(NoWarn);CS1591;NU5128</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,5 +26,21 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- Pack the generator DLL into the analyzers folder -->
+  <ItemGroup>
+    <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true"
+          PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+
+  <!-- Include Attributes DLL in lib/ so consumers get the attribute types.
+       The generator itself doesn't compile against this (it has a local ImplStrategy copy). -->
+  <ItemGroup>
+    <None Include="..\TraitEmulation.Attributes\bin\$(Configuration)\netstandard2.0\TraitEmulation.Attributes.dll"
+          Pack="true" PackagePath="lib/netstandard2.0" Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
 </Project>

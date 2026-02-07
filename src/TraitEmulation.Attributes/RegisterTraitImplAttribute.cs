@@ -28,6 +28,11 @@ namespace TraitEmulation
         /// </summary>
         public string? FieldMapping { get; set; }
 
+        /// <summary>
+        /// Initializes a new instance registering a trait implementation for an external type.
+        /// </summary>
+        /// <param name="traitType">The trait interface type.</param>
+        /// <param name="targetType">The external type to add trait support for.</param>
         public RegisterTraitImplAttribute(Type traitType, Type targetType)
         {
             TraitType = traitType ?? throw new ArgumentNullException(nameof(traitType));

@@ -5,6 +5,13 @@
     <LangVersion>preview</LangVersion>
     <Nullable>enable</Nullable>
     <RootNamespace>TraitEmulation</RootNamespace>
+    <PackageId>TraitEmulation.Attributes</PackageId>
+    <Description>Attribute classes for TraitEmulation: [Trait], [ImplementsTrait], [RegisterTraitImpl], and ImplStrategy enum.</Description>
+    <PackageTags>traits;polymorphism;attributes;source-generator</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
 </Project>
