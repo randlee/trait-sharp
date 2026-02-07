@@ -31,7 +31,7 @@ void ProcessBatch(IProcessor[] items) {
 ```
 
 **Impact on pipeline processing systems:**
-- Heap allocations for thousands of value-type pixels/tiles
+- Heap allocations for thousands of value-type elements
 - GC pressure from temporary boxes
 - Cache misses from pointer indirection
 - 3-5x performance degradation in hot loops
@@ -76,7 +76,7 @@ A trait is an interface decorated with `[Trait]` that defines a contract:
 
 ```csharp
 [Trait(GenerateLayout = true)]
-interface IPixelCoordinate {
+interface ICoordinate {
     int X { get; }
     int Y { get; }
 }
@@ -93,9 +93,9 @@ The generator creates:
 The fundamental zero-copy mechanism:
 
 ```csharp
-// Generated from IPixelCoordinate
+// Generated from ICoordinate
 [StructLayout(LayoutKind.Sequential)]
-public struct PixelCoordinateLayout {
+public struct CoordinateLayout {
     public int X;
     public int Y;
 }
@@ -106,9 +106,9 @@ Types implementing the trait can be reinterpreted as this layout **if their memo
 ### Trait Implementation
 
 ```csharp
-[ImplementsTrait(typeof(IPixelCoordinate))]
+[ImplementsTrait(typeof(ICoordinate))]
 [StructLayout(LayoutKind.Sequential)]
-partial struct BayerPixel {
+partial struct DataPoint {
     public int X, Y;           // Must match layout
     public byte R, G, B, A;  // Additional fields OK
 }
@@ -122,7 +122,7 @@ Generator verifies:
 ### External Type Registration
 
 ```csharp
-[assembly: RegisterTraitImpl(typeof(IPixelCoordinate), typeof(System.Drawing.Point))]
+[assembly: RegisterTraitImpl(typeof(ICoordinate), typeof(System.Drawing.Point))]
 ```
 
 Generates adapter that bridges system types to trait contract.
@@ -134,13 +134,13 @@ Generates adapter that bridges system types to trait contract.
 ### 1. Constraint Interface
 
 ```csharp
-public interface ITrait<IPixelCoordinate, TSelf> where TSelf : unmanaged {
+public interface ITrait<ICoordinate, TSelf> where TSelf : unmanaged {
     // Individual property accessors via static dispatch
     static abstract int GetX_Impl(in TSelf self);
     static abstract int GetY_Impl(in TSelf self);
 
     // Zero-copy layout cast via Unsafe.As reinterpret
-    static abstract ref readonly PixelCoordinateLayout AsLayout(in TSelf self);
+    static abstract ref readonly CoordinateLayout AsLayout(in TSelf self);
 }
 ```
 
@@ -149,13 +149,13 @@ public interface ITrait<IPixelCoordinate, TSelf> where TSelf : unmanaged {
 ### 2. Extension Methods
 
 ```csharp
-public static class IPixelCoordinateExtensions {
+public static class ICoordinateExtensions {
     /// <summary>
     /// Zero-copy cast to layout struct for direct field access.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ref readonly PixelCoordinateLayout AsPixelCoordinate<T>(this in T self)
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+    public static ref readonly CoordinateLayout AsCoordinate<T>(this in T self)
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
         return ref T.AsLayout(in self);
     }
@@ -165,39 +165,39 @@ public static class IPixelCoordinateExtensions {
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int GetX<T>(this in T self)
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
         return T.GetX_Impl(in self);
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int GetY<T>(this in T self)
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
         return T.GetY_Impl(in self);
     }
 }
 ```
 
-**Purpose:** Ergonomic access - `pixel.AsPixelCoordinate()` reads naturally.
+**Purpose:** Ergonomic access - `item.AsCoordinate()` reads naturally.
 
 ### 3. Static Interface Methods
 
 ```csharp
-public partial interface IPixelCoordinate {
+public partial interface ICoordinate {
     /// <summary>
     /// Static accessor for X coordinate across all implementers.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static int GetX<T>(in T self) 
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
         return T.GetX_Impl(in self);
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static int GetY<T>(in T self) 
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
         return T.GetY_Impl(in self);
     }
@@ -206,8 +206,8 @@ public partial interface IPixelCoordinate {
     /// Zero-copy cast to layout struct.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static ref readonly PixelCoordinateLayout AsLayout<T>(in T self)
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+    static ref readonly CoordinateLayout AsLayout<T>(in T self)
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
         return ref T.AsLayout(in self);
     }
@@ -219,18 +219,18 @@ public partial interface IPixelCoordinate {
 ### 4. Implementation for User Types
 
 ```csharp
-// Generated for BayerPixel
-partial struct BayerPixel : ITrait<IPixelCoordinate, BayerPixel> {
+// Generated for DataPoint
+partial struct DataPoint : ITrait<ICoordinate, DataPoint> {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetX_Impl(in BayerPixel self) => self.X;
+    public static int GetX_Impl(in DataPoint self) => self.X;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int GetY_Impl(in BayerPixel self) => self.Y;
+    public static int GetY_Impl(in DataPoint self) => self.Y;
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ref readonly PixelCoordinateLayout AsLayout(in BayerPixel self) {
-        // SAFETY: Generator verified BayerPixel starts with {int X; int Y;}
-        return ref Unsafe.As<BayerPixel, PixelCoordinateLayout>(
+    public static ref readonly CoordinateLayout AsLayout(in DataPoint self) {
+        // SAFETY: Generator verified DataPoint starts with {int X; int Y;}
+        return ref Unsafe.As<DataPoint, CoordinateLayout>(
             ref Unsafe.AsRef(in self));
     }
 }
@@ -245,13 +245,13 @@ file static class SystemDrawingPointTraitImpl {
 }
 
 // C# doesn't allow adding interfaces to external types, so we use DIM pattern
-public static class IPixelCoordinateExternalImpls {
+public static class ICoordinateExternalImpls {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ref readonly PixelCoordinateLayout AsPixelCoordinate(
+    public static ref readonly CoordinateLayout AsCoordinate(
         this in System.Drawing.Point self)
     {
         // SAFETY: System.Drawing.Point is {int X; int Y;} - exact match
-        return ref Unsafe.As<System.Drawing.Point, PixelCoordinateLayout>(
+        return ref Unsafe.As<System.Drawing.Point, CoordinateLayout>(
             ref Unsafe.AsRef(in self));
     }
 }
@@ -266,12 +266,12 @@ public static class IPixelCoordinateExternalImpls {
 ### Pattern 1: Direct Field Access (Fastest)
 
 ```csharp
-public static void ApplyFlatField<T>(Span<T> pixels, Span<float> correction, int width) 
-    where T : unmanaged, ITrait<IPixelCoordinate, T>
+public static void ApplyFlatField<T>(Span<T> items, Span<float> weights, int width) 
+    where T : unmanaged, ITrait<ICoordinate, T>
 {
-    for (int i = 0; i < pixels.Length; i++) {
-        ref var pixel = ref pixels[i];
-        ref readonly var coord = ref pixel.AsPixelCoordinate();
+    for (int i = 0; i < items.Length; i++) {
+        ref var item = ref items[i];
+        ref readonly var coord = ref item.AsCoordinate();
         
         int offset = coord.Y * width + coord.X;  // Direct field access!
         // ... apply correction[offset]
@@ -285,8 +285,8 @@ public static void ApplyFlatField<T>(Span<T> pixels, Span<float> correction, int
 
 ```csharp
 public static float Distance<T1, T2>(in T1 p1, in T2 p2)
-    where T1 : unmanaged, ITrait<IPixelCoordinate, T1>
-    where T2 : unmanaged, ITrait<IPixelCoordinate, T2>
+    where T1 : unmanaged, ITrait<ICoordinate, T1>
+    where T2 : unmanaged, ITrait<ICoordinate, T2>
 {
     int dx = p1.GetX() - p2.GetX();
     int dy = p1.GetY() - p2.GetY();
@@ -299,14 +299,14 @@ public static float Distance<T1, T2>(in T1 p1, in T2 p2)
 ### Pattern 3: Mixed Types (System + User)
 
 ```csharp
-BayerPixel bayerPixel = new BayerPixel { X = 10, Y = 20, R = 255 };
+DataPoint dataPoint = new DataPoint { X = 10, Y = 20, R = 255 };
 System.Drawing.Point sysPoint = new System.Drawing.Point(30, 40);
 
 // Both work with extension methods
-ref readonly var coord1 = ref bayerPixel.AsPixelCoordinate();
-ref readonly var coord2 = ref sysPoint.AsPixelCoordinate();
+ref readonly var coord1 = ref dataPoint.AsCoordinate();
+ref readonly var coord2 = ref sysPoint.AsCoordinate();
 
-Console.WriteLine($"Bayer: ({coord1.X}, {coord1.Y})");
+Console.WriteLine($"Custom: ({coord1.X}, {coord1.Y})");
 Console.WriteLine($"System: ({coord2.X}, {coord2.Y})");
 ```
 
@@ -1796,13 +1796,13 @@ var subRegion = grid2D.Slice(rowStart: 2, colStart: 5, height: 3, width: 10);
 using TraitEmulation;
 
 [Trait(GenerateLayout = true)]
-public interface IPixelCoordinate {
+public interface ICoordinate {
     int X { get; }
     int Y { get; }
 }
 
 [Trait(GenerateLayout = true)]
-public interface IRGBPixel {
+public interface IColorValue {
     byte R { get; }
     byte G { get; }
     byte B { get; }
@@ -1812,15 +1812,15 @@ public interface IRGBPixel {
 ### Implement on Custom Types
 
 ```csharp
-[ImplementsTrait(typeof(IPixelCoordinate))]
-[ImplementsTrait(typeof(IRGBPixel))]
+[ImplementsTrait(typeof(ICoordinate))]
+[ImplementsTrait(typeof(IColorValue))]
 [StructLayout(LayoutKind.Sequential)]
-public partial struct BayerPixel {
+public partial struct DataPoint {
     public int X, Y;
     public byte R, G, B, A;
 }
 
-[ImplementsTrait(typeof(IPixelCoordinate))]
+[ImplementsTrait(typeof(ICoordinate))]
 [StructLayout(LayoutKind.Sequential)]
 public partial struct Point3D {
     public int X, Y;
@@ -1831,7 +1831,7 @@ public partial struct Point3D {
 ### Register System Types
 
 ```csharp
-[assembly: RegisterTraitImpl(typeof(IPixelCoordinate), typeof(System.Drawing.Point))]
+[assembly: RegisterTraitImpl(typeof(ICoordinate), typeof(System.Drawing.Point))]
 ```
 
 ### Write Generic Algorithms
@@ -1839,17 +1839,17 @@ public partial struct Point3D {
 ```csharp
 public static class Processing {
     /// <summary>
-    /// Apply to any pixel type with coordinates.
+    /// Apply to any type with coordinates.
     /// </summary>
     public static void Apply<T>(
-        Span<T> pixels,
-        ReadOnlySpan<float> correction,
+        Span<T> items,
+        ReadOnlySpan<float> weights,
         int width)
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
-        for (int i = 0; i < pixels.Length; i++) {
-            ref var pixel = ref pixels[i];
-            ref readonly var coord = ref pixel.AsPixelCoordinate();
+        for (int i = 0; i < items.Length; i++) {
+            ref var item = ref items[i];
+            ref readonly var coord = ref item.AsCoordinate();
             
             int offset = coord.Y * width + coord.X;
             float factor = correction[offset];
@@ -1862,11 +1862,11 @@ public static class Processing {
     /// Compute distance between any two coordinate types.
     /// </summary>
     public static float Distance<T1, T2>(in T1 p1, in T2 p2)
-        where T1 : unmanaged, ITrait<IPixelCoordinate, T1>
-        where T2 : unmanaged, ITrait<IPixelCoordinate, T2>
+        where T1 : unmanaged, ITrait<ICoordinate, T1>
+        where T2 : unmanaged, ITrait<ICoordinate, T2>
     {
-        ref readonly var c1 = ref p1.AsPixelCoordinate();
-        ref readonly var c2 = ref p2.AsPixelCoordinate();
+        ref readonly var c1 = ref p1.AsCoordinate();
+        ref readonly var c2 = ref p2.AsCoordinate();
         
         int dx = c1.X - c2.X;
         int dy = c1.Y - c2.Y;
@@ -1874,12 +1874,12 @@ public static class Processing {
     }
     
     /// <summary>
-    /// Convert any RGB pixel to grayscale.
+    /// Compute weighted average of color channels.
     /// </summary>
-    public static byte ToGrayscale<T>(in T pixel)
-        where T : unmanaged, ITrait<IRGBPixel, T>
+    public static byte ToWeightedAverage<T>(in T value)
+        where T : unmanaged, ITrait<IColorValue, T>
     {
-        ref readonly var rgb = ref pixel.AsRGBPixel();
+        ref readonly var rgb = ref value.AsColorValue();
         return (byte)(0.299f * rgb.R + 0.587f * rgb.G + 0.114f * rgb.B);
     }
 }
@@ -1889,14 +1889,14 @@ public static class Processing {
 
 ```csharp
 // Works with custom types
-BayerPixel[] bayerPixels = LoadData();
-Processing.Apply(bayerPixels, factors, width);
+DataPoint[] dataPoints = LoadData();
+Processing.Apply(dataPoints, factors, width);
 
 // Works with System types
 System.Drawing.Point[] points = GetPoints();
 var sysPoint = points[0];
-var bayerPixel = bayerPixels[0];
-float dist = Processing.Distance(sysPoint, bayerPixel);  // Mixed types!
+var dataPoint = dataPoints[0];
+float dist = Processing.Distance(sysPoint, dataPoint);  // Mixed types!
 
 // No boxing, zero copy, full type safety
 Console.WriteLine($"Distance: {dist}");
@@ -1910,21 +1910,21 @@ Console.WriteLine($"Distance: {dist}");
 
 ```csharp
 public class TraitBenchmark {
-    private BayerPixel[] _pixels;
+    private DataPoint[] _items;
     
     [GlobalSetup]
     public void Setup() {
-        _pixels = new BayerPixel[10000];
-        for (int i = 0; i < _pixels.Length; i++) {
-            _pixels[i] = new BayerPixel { X = i % 100, Y = i / 100 };
+        _items = new DataPoint[10000];
+        for (int i = 0; i < _items.Length; i++) {
+            _items[i] = new DataPoint { X = i % 100, Y = i / 100 };
         }
     }
     
     [Benchmark(Baseline = true)]
     public int Direct_FieldAccess() {
         int sum = 0;
-        for (int i = 0; i < _pixels.Length; i++) {
-            sum += _pixels[i].X + _pixels[i].Y;
+        for (int i = 0; i < _items.Length; i++) {
+            sum += _items[i].X + _items[i].Y;
         }
         return sum;
     }
@@ -1932,8 +1932,8 @@ public class TraitBenchmark {
     [Benchmark]
     public int Trait_LayoutCast() {
         int sum = 0;
-        for (int i = 0; i < _pixels.Length; i++) {
-            ref readonly var coord = ref _pixels[i].AsPixelCoordinate();
+        for (int i = 0; i < _items.Length; i++) {
+            ref readonly var coord = ref _items[i].AsCoordinate();
             sum += coord.X + coord.Y;
         }
         return sum;
@@ -1942,18 +1942,18 @@ public class TraitBenchmark {
     [Benchmark]
     public int Trait_ExtensionMethods() {
         int sum = 0;
-        for (int i = 0; i < _pixels.Length; i++) {
-            sum += _pixels[i].GetX() + _pixels[i].GetY();
+        for (int i = 0; i < _items.Length; i++) {
+            sum += _items[i].GetX() + _items[i].GetY();
         }
         return sum;
     }
     
     [Benchmark]
     public int Interface_Boxing() {
-        IPixelCoordinate[] pixels = _pixels;  // Boxing!
+        ICoordinate[] boxed = _items;  // Boxing!
         int sum = 0;
-        for (int i = 0; i < pixels.Length; i++) {
-            sum += pixels[i].X + pixels[i].Y;
+        for (int i = 0; i < boxed.Length; i++) {
+            sum += boxed[i].X + boxed[i].Y;
         }
         return sum;
     }
@@ -2157,17 +2157,17 @@ public class LayoutCastTests {
     [TestMethod]
     public void PrefixLayout_ZeroCopy_PointerIdentity()
     {
-        var pixel = new BayerPixel { X = 10, Y = 20, R = 255 };
-        ref readonly var coord = ref pixel.AsPixelCoordinate();
+        var dp = new DataPoint { X = 10, Y = 20, R = 255 };
+        ref readonly var coord = ref dp.AsCoordinate();
 
         Assert.AreEqual(10, coord.X);
         Assert.AreEqual(20, coord.Y);
 
         // Pointer identity proves zero-copy
         unsafe {
-            fixed (int* pixelPtr = &pixel.X)
+            fixed (int* dpPtr = &dp.X)
             fixed (int* coordPtr = &coord.X) {
-                Assert.IsTrue(pixelPtr == coordPtr, "Not zero-copy — pointers differ!");
+                Assert.IsTrue(dpPtr == coordPtr, "Not zero-copy — pointers differ!");
             }
         }
     }
@@ -2204,18 +2204,18 @@ public class LayoutCastTests {
     [TestMethod]
     public void ExtensionMethod_MatchesLayoutCast()
     {
-        var pixel = new BayerPixel { X = 42, Y = 99 };
-        ref readonly var layout = ref pixel.AsPixelCoordinate();
+        var dp = new DataPoint { X = 42, Y = 99 };
+        ref readonly var layout = ref dp.AsCoordinate();
 
-        Assert.AreEqual(layout.X, pixel.GetX());
-        Assert.AreEqual(layout.Y, pixel.GetY());
+        Assert.AreEqual(layout.X, dp.GetX());
+        Assert.AreEqual(layout.Y, dp.GetY());
     }
 
     [TestMethod]
     public void ExternalType_ExtensionMethod_ZeroCopy()
     {
         var sysPoint = new System.Drawing.Point(10, 20);
-        ref readonly var coord = ref sysPoint.AsPixelCoordinate();
+        ref readonly var coord = ref sysPoint.AsCoordinate();
 
         Assert.AreEqual(10, coord.X);
         Assert.AreEqual(20, coord.Y);
@@ -2224,16 +2224,16 @@ public class LayoutCastTests {
     [TestMethod]
     public void MultipleTrait_SameStruct_IndependentViews()
     {
-        var pixel = new BayerPixel { X = 5, Y = 10, R = 200, G = 100, B = 25, A = 255 };
+        var dp = new DataPoint { X = 5, Y = 10, R = 200, G = 100, B = 25, A = 255 };
 
-        ref readonly var coord = ref pixel.AsPixelCoordinate();
-        ref readonly var rgb = ref pixel.AsRGBPixel();
+        ref readonly var coord = ref dp.AsCoordinate();
+        ref readonly var color = ref dp.AsColorValue();
 
         Assert.AreEqual(5, coord.X);
         Assert.AreEqual(10, coord.Y);
-        Assert.AreEqual(200, rgb.R);
-        Assert.AreEqual(100, rgb.G);
-        Assert.AreEqual(25, rgb.B);
+        Assert.AreEqual(200, color.R);
+        Assert.AreEqual(100, color.G);
+        Assert.AreEqual(25, color.B);
     }
 
     [TestMethod]
@@ -2517,11 +2517,11 @@ public class PerformanceRegressionTests {
     [TestMethod]
     public void LayoutCast_ZeroAllocation()
     {
-        var pixel = new BayerPixel { X = 1, Y = 2 };
+        var dp = new DataPoint { X = 1, Y = 2 };
         long before = GC.GetAllocatedBytesForCurrentThread();
 
         for (int i = 0; i < 10000; i++) {
-            ref readonly var coord = ref pixel.AsPixelCoordinate();
+            ref readonly var coord = ref dp.AsCoordinate();
             _ = coord.X + coord.Y;
         }
 
@@ -2634,7 +2634,7 @@ interface IComparable {
 
 ```csharp
 [Trait]
-interface IColoredPixel : IPixelCoordinate, IRGBPixel {
+interface IColoredPoint : ICoordinate, IColorValue {
     // Inherits X, Y, R, G, B
 }
 ```
@@ -2795,28 +2795,28 @@ using TraitEmulation;
 namespace TraitExamples;
 
 [Trait(GenerateLayout = true)]
-public interface IPixelCoordinate {
+public interface ICoordinate {
     int X { get; }
     int Y { get; }
 }
 
 [Trait(GenerateLayout = true)]
-public interface IRGBPixel {
+public interface IColorValue {
     byte R { get; }
     byte G { get; }
     byte B { get; }
 }
 
-// File: BayerPixel.cs
+// File: DataPoint.cs
 using System.Runtime.InteropServices;
 using TraitEmulation;
 
 namespace TraitExamples;
 
-[ImplementsTrait(typeof(IPixelCoordinate))]
-[ImplementsTrait(typeof(IRGBPixel))]
+[ImplementsTrait(typeof(ICoordinate))]
+[ImplementsTrait(typeof(IColorValue))]
 [StructLayout(LayoutKind.Sequential)]
-public partial struct BayerPixel {
+public partial struct DataPoint {
     public int X, Y;
     public byte R, G, B, A;
 }
@@ -2825,7 +2825,7 @@ public partial struct BayerPixel {
 using TraitEmulation;
 using TraitExamples;
 
-[assembly: RegisterTraitImpl(typeof(IPixelCoordinate), typeof(System.Drawing.Point))]
+[assembly: RegisterTraitImpl(typeof(ICoordinate), typeof(System.Drawing.Point))]
 
 // File: Processing.cs
 using System;
@@ -2837,24 +2837,24 @@ namespace TraitExamples;
 
 public static class Processing {
     public static void ApplyFlatField<T>(
-        Span<T> pixels,
-        ReadOnlySpan<float> correction,
+        Span<T> items,
+        ReadOnlySpan<float> weights,
         int width)
-        where T : unmanaged, ITrait<IPixelCoordinate, T>
+        where T : unmanaged, ITrait<ICoordinate, T>
     {
-        for (int i = 0; i < pixels.Length; i++) {
-            ref readonly var coord = ref pixels[i].AsPixelCoordinate();
+        for (int i = 0; i < items.Length; i++) {
+            ref readonly var coord = ref items[i].AsCoordinate();
             int offset = coord.Y * width + coord.X;
             // Apply correction...
         }
     }
     
     public static float Distance<T1, T2>(in T1 p1, in T2 p2)
-        where T1 : unmanaged, ITrait<IPixelCoordinate, T1>
-        where T2 : unmanaged, ITrait<IPixelCoordinate, T2>
+        where T1 : unmanaged, ITrait<ICoordinate, T1>
+        where T2 : unmanaged, ITrait<ICoordinate, T2>
     {
-        ref readonly var c1 = ref p1.AsPixelCoordinate();
-        ref readonly var c2 = ref p2.AsPixelCoordinate();
+        ref readonly var c1 = ref p1.AsCoordinate();
+        ref readonly var c2 = ref p2.AsCoordinate();
         
         int dx = c1.X - c2.X;
         int dy = c1.Y - c2.Y;
@@ -2866,11 +2866,11 @@ public static class Processing {
 using System;
 using TraitExamples;
 
-var bayerPixels = new BayerPixel[100];
+var dataPoints = new DataPoint[100];
 var sysPoint = new System.Drawing.Point(50, 50);
 
 // Works with both types - no boxing!
-float dist = Processing.Distance(bayerPixels[0], sysPoint);
+float dist = Processing.Distance(dataPoints[0], sysPoint);
 Console.WriteLine($"Distance: {dist}");
 ```
 
