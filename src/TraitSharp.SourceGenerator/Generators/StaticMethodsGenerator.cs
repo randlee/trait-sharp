@@ -35,6 +35,41 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine();
             }
 
+            // Static method dispatchers
+            foreach (var method in trait.Methods)
+            {
+                var returnType = method.ReturnsSelf ? "T" : method.ReturnType;
+
+                var sigParams = "in T self";
+                foreach (var param in method.Parameters)
+                {
+                    var typeName = param.IsSelf ? "T" : param.TypeName;
+                    var modifier = string.IsNullOrEmpty(param.Modifier) ? "" : param.Modifier + " ";
+                    sigParams += $", {modifier}{typeName} {param.Name}";
+                }
+
+                var fwdArgs = "in self";
+                foreach (var param in method.Parameters)
+                {
+                    var modifier = string.IsNullOrEmpty(param.Modifier) ? "" : param.Modifier + " ";
+                    fwdArgs += $", {modifier}{param.Name}";
+                }
+
+                builder.AppendLine("/// <summary>");
+                builder.AppendLine($"/// Static dispatch for {method.Name} across all implementers.");
+                builder.AppendLine("/// </summary>");
+                builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+                builder.AppendLine($"static {returnType} {method.Name}{method.OverloadSuffix}<T>({sigParams})");
+                builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
+                builder.OpenBrace();
+                if (method.ReturnsVoid)
+                    builder.AppendLine($"T.{method.ImplMethodName}({fwdArgs});");
+                else
+                    builder.AppendLine($"return T.{method.ImplMethodName}({fwdArgs});");
+                builder.CloseBrace();
+                builder.AppendLine();
+            }
+
             // Static AsLayout method
             builder.AppendLine("/// <summary>");
             builder.AppendLine("/// Zero-copy cast to layout struct.");

@@ -123,7 +123,15 @@ namespace TraitSharp.SourceGenerator
                         methodSymbol.MethodKind == MethodKind.EventRemove)
                         continue;
 
-                    // Regular methods are allowed — traits may support methods in future
+                    // Parse regular methods as trait methods
+                    if (methodSymbol.MethodKind == MethodKind.Ordinary)
+                    {
+                        var traitMethod = ParseTraitMethod(methodSymbol, interfaceSymbol);
+                        if (traitMethod != null)
+                            model.Methods.Add(traitMethod);
+                        else
+                            model.InvalidMembers.Add(methodSymbol.Name); // generic methods → TE0012
+                    }
                 }
                 else if (member is IEventSymbol eventSymbol)
                 {
@@ -137,12 +145,20 @@ namespace TraitSharp.SourceGenerator
                 }
             }
 
-            // Resolve trait inheritance: collect base traits and merge properties
+            // Resolve overload suffixes for methods with same name
+            ResolveOverloadSuffixes(model.Methods);
+
+            // Resolve trait inheritance: collect base traits and merge properties/methods
             ResolveBaseTraits(interfaceSymbol, model, new HashSet<string>());
             BuildAllProperties(model);
+            BuildAllMethods(model);
             if (model.AllProperties.Count > 0 && model.HasBaseTraits)
             {
                 model.Properties = new List<TraitProperty>(model.AllProperties);
+            }
+            if (model.AllMethods.Count > 0 && model.HasBaseTraits)
+            {
+                model.Methods = new List<TraitMethod>(model.AllMethods);
             }
 
             return model;
@@ -328,6 +344,16 @@ namespace TraitSharp.SourceGenerator
                         methodSymbol.MethodKind == MethodKind.EventAdd ||
                         methodSymbol.MethodKind == MethodKind.EventRemove)
                         continue;
+
+                    // Parse regular methods as trait methods
+                    if (methodSymbol.MethodKind == MethodKind.Ordinary)
+                    {
+                        var traitMethod = ParseTraitMethod(methodSymbol, traitTypeSymbol);
+                        if (traitMethod != null)
+                            traitModel.Methods.Add(traitMethod);
+                        else
+                            traitModel.InvalidMembers.Add(methodSymbol.Name);
+                    }
                 }
                 else if (member is IEventSymbol eventSymbol)
                 {
@@ -339,12 +365,20 @@ namespace TraitSharp.SourceGenerator
                 }
             }
 
+            // Resolve overload suffixes for methods with same name
+            ResolveOverloadSuffixes(traitModel.Methods);
+
             // Resolve trait inheritance for implementation-side models too
             ResolveBaseTraits(traitTypeSymbol, traitModel, new HashSet<string>());
             BuildAllProperties(traitModel);
+            BuildAllMethods(traitModel);
             if (traitModel.AllProperties.Count > 0 && traitModel.HasBaseTraits)
             {
                 traitModel.Properties = new List<TraitProperty>(traitModel.AllProperties);
+            }
+            if (traitModel.AllMethods.Count > 0 && traitModel.HasBaseTraits)
+            {
+                traitModel.Methods = new List<TraitMethod>(traitModel.AllMethods);
             }
 
             return traitModel;
@@ -493,6 +527,9 @@ namespace TraitSharp.SourceGenerator
                 }
             }
 
+            // TE0012: methods with generic type parameters are reported via InvalidMembers
+            // (ParseTraitMethod returns null for generic methods, adding name to InvalidMembers)
+
             // TE0010: ambiguous inherited fields (same name, different types across base traits)
             if (trait.HasBaseTraits)
             {
@@ -578,6 +615,110 @@ namespace TraitSharp.SourceGenerator
                     continue; // Already inherited
                 seen[prop.Name] = (prop, model.Name);
                 model.AllProperties.Add(prop);
+            }
+        }
+
+        /// <summary>
+        /// Parses an IMethodSymbol into a TraitMethod model.
+        /// Returns null if the method has generic type parameters (invalid for traits).
+        /// </summary>
+        private static TraitMethod? ParseTraitMethod(IMethodSymbol methodSymbol, INamedTypeSymbol traitInterfaceSymbol)
+        {
+            // Generic methods are not supported in traits
+            if (methodSymbol.TypeParameters.Length > 0)
+                return null;
+
+            var method = new TraitMethod
+            {
+                Name = methodSymbol.Name,
+                ReturnType = methodSymbol.ReturnsVoid
+                    ? "void"
+                    : methodSymbol.ReturnType.GetMinimalTypeName(),
+                ReturnsSelf = !methodSymbol.ReturnsVoid &&
+                    SymbolEqualityComparer.Default.Equals(methodSymbol.ReturnType, traitInterfaceSymbol)
+            };
+
+            foreach (var param in methodSymbol.Parameters)
+            {
+                var isSelf = SymbolEqualityComparer.Default.Equals(param.Type, traitInterfaceSymbol);
+                var modifier = param.RefKind switch
+                {
+                    RefKind.In => "in",
+                    RefKind.Ref => "ref",
+                    RefKind.Out => "out",
+                    _ => ""
+                };
+
+                method.Parameters.Add(new TraitMethodParameter
+                {
+                    Name = param.Name,
+                    TypeName = param.Type.GetMinimalTypeName(),
+                    IsSelf = isSelf,
+                    Modifier = modifier
+                });
+            }
+
+            return method;
+        }
+
+        /// <summary>
+        /// Assigns overload suffixes when multiple methods share the same name.
+        /// E.g., Process() and Process(int) become Process_Impl and Process_1_Impl.
+        /// </summary>
+        private static void ResolveOverloadSuffixes(List<TraitMethod> methods)
+        {
+            var nameCounts = new Dictionary<string, int>();
+            foreach (var m in methods)
+            {
+                if (!nameCounts.ContainsKey(m.Name))
+                    nameCounts[m.Name] = 0;
+                nameCounts[m.Name]++;
+            }
+
+            var nameIndexes = new Dictionary<string, int>();
+            foreach (var m in methods)
+            {
+                if (nameCounts[m.Name] <= 1)
+                    continue; // No overload disambiguation needed
+
+                if (!nameIndexes.ContainsKey(m.Name))
+                    nameIndexes[m.Name] = 0;
+
+                var idx = nameIndexes[m.Name];
+                m.OverloadSuffix = idx == 0 ? "" : $"_{idx}";
+                nameIndexes[m.Name] = idx + 1;
+            }
+        }
+
+        /// <summary>
+        /// Builds the merged AllMethods list by collecting inherited methods depth-first,
+        /// deduplicating by ImplMethodName (diamond inheritance), then appending own direct methods.
+        /// </summary>
+        private static void BuildAllMethods(TraitModel model)
+        {
+            if (!model.HasBaseTraits) return;
+
+            model.AllMethods.Clear();
+            var seen = new HashSet<string>();
+
+            // First: inherited methods depth-first
+            foreach (var baseTrait in model.BaseTraits)
+            {
+                var baseMethods = baseTrait.AllMethods.Count > 0
+                    ? baseTrait.AllMethods
+                    : baseTrait.Methods;
+                foreach (var method in baseMethods)
+                {
+                    if (seen.Add(method.ImplMethodName))
+                        model.AllMethods.Add(method);
+                }
+            }
+
+            // Then: own direct methods
+            foreach (var method in model.Methods)
+            {
+                if (seen.Add(method.ImplMethodName))
+                    model.AllMethods.Add(method);
             }
         }
 

@@ -23,6 +23,17 @@ public partial interface IColorValue
     byte B { get; }
 }
 
+/// <summary>
+/// A trait with both a property and a method: demonstrates method trait dispatch.
+/// The Tag property provides layout, and Describe() is a method dispatched via the trait.
+/// </summary>
+[Trait(GenerateLayout = true)]
+public partial interface ILabeled
+{
+    int Tag { get; }
+    string Describe();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. Implement traits on structs - layout must be compatible
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +61,24 @@ public partial struct Point3D
 {
     public int X, Y;
     public float Z;
+}
+
+/// <summary>
+/// A labeled entity that implements the ILabeled method trait.
+/// Tag is the layout property; Describe() is the user-provided method.
+/// </summary>
+[ImplementsTrait(typeof(ILabeled))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct LabeledItem
+{
+    public int Tag;
+    public float Value;
+
+    // Method trait: user provides the implementation body
+    public static string Describe_Impl(in LabeledItem self)
+    {
+        return $"Item(Tag={self.Tag}, Value={self.Value:F1})";
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,5 +114,15 @@ public static class Algorithms
     {
         ref readonly var rgb = ref value.AsColorValue();
         return (byte)(0.299f * rgb.R + 0.587f * rgb.G + 0.114f * rgb.B);
+    }
+
+    /// <summary>
+    /// Generic algorithm using method trait: describe any labeled item.
+    /// The Describe() extension method is dispatched via the trait constraint.
+    /// </summary>
+    public static string DescribeItem<T>(ref T item)
+        where T : unmanaged, ILabeledTrait<T>
+    {
+        return item.Describe();
     }
 }

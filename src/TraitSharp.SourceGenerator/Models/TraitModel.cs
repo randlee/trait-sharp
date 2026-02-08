@@ -29,6 +29,22 @@ namespace TraitSharp.SourceGenerator.Models
         public List<TraitProperty> AllProperties { get; set; } = new List<TraitProperty>();
 
         /// <summary>
+        /// Methods declared directly on this trait interface.
+        /// </summary>
+        public List<TraitMethod> Methods { get; set; } = new List<TraitMethod>();
+
+        /// <summary>
+        /// Merged method list including inherited methods (depth-first, diamond-deduplicated).
+        /// Empty until BuildAllMethods is called.
+        /// </summary>
+        public List<TraitMethod> AllMethods { get; set; } = new List<TraitMethod>();
+
+        /// <summary>
+        /// True when this trait has at least one method (own or inherited).
+        /// </summary>
+        public bool HasMethods => Methods.Count > 0 || AllMethods.Count > 0;
+
+        /// <summary>
         /// True when this trait has at least one base trait.
         /// </summary>
         public bool HasBaseTraits => BaseTraits.Count > 0;
@@ -57,5 +73,32 @@ namespace TraitSharp.SourceGenerator.Models
         public ITypeSymbol? Type { get; set; }
         public bool HasGetter { get; set; }
         public bool HasSetter { get; set; }
+    }
+
+    internal sealed class TraitMethod
+    {
+        public string Name { get; set; } = "";
+        public string ReturnType { get; set; } = "void";
+        public bool ReturnsVoid => ReturnType == "void";
+        public bool ReturnsSelf { get; set; }
+        public List<TraitMethodParameter> Parameters { get; set; } = new List<TraitMethodParameter>();
+        public string OverloadSuffix { get; set; } = "";
+
+        /// <summary>
+        /// The generated implementation method name: {Name}{OverloadSuffix}_Impl
+        /// </summary>
+        public string ImplMethodName => $"{Name}{OverloadSuffix}_Impl";
+    }
+
+    internal sealed class TraitMethodParameter
+    {
+        public string Name { get; set; } = "";
+        public string TypeName { get; set; } = "";
+        public bool IsSelf { get; set; }
+
+        /// <summary>
+        /// Parameter modifier: "in", "ref", "out", or "" (none).
+        /// </summary>
+        public string Modifier { get; set; } = "";
     }
 }

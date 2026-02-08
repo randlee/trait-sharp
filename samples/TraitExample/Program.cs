@@ -112,6 +112,20 @@ Console.WriteLine();
 Assert(points[0].X == 100, "points[0].X should be 100 after translation");
 Assert(points[0].Y == 200, "points[0].Y should be 200 after translation");
 
+// --- Method trait dispatch ---
+Console.WriteLine("--- Method trait: Describe via ILabeled ---");
+
+var item1 = new LabeledItem { Tag = 42, Value = 3.14f };
+string desc = item1.Describe();
+Console.WriteLine($"LabeledItem.Describe(): {desc}");
+Assert(desc == "Item(Tag=42, Value=3.1)", "Describe() should return formatted string");
+
+// Generic algorithm using method trait
+string genericDesc = Algorithms.DescribeItem(ref item1);
+Console.WriteLine($"Algorithms.DescribeItem(): {genericDesc}");
+Assert(genericDesc == desc, "Generic dispatch should match direct call");
+Console.WriteLine();
+
 // --- Zero allocation verification ---
 Console.WriteLine("--- Zero allocation verification ---");
 long before = GC.GetAllocatedBytesForCurrentThread();

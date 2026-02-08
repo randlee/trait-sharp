@@ -85,5 +85,13 @@ namespace TraitSharp.SourceGenerator.Analyzers
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor TE0012_InvalidMethodSignature = new(
+            id: "TE0012",
+            title: "Invalid trait method signature",
+            messageFormat: "Trait method '{0}' in '{1}' has generic type parameters, which are not supported",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }
