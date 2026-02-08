@@ -2,13 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
-# Cancel in-progress runs when a new push updates the same PR
+# Deduplicate: when a push updates an open PR, both push and pull_request
+# events fire. Keying on PR number collapses them; the later event cancels
+# the earlier one so only one run completes. Direct pushes (no PR) use
+# the branch ref as a unique key.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.sha }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
