@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main, develop]
 
-# Cancel in-progress runs for the same branch/PR to avoid duplicate jobs
+# Cancel in-progress runs when a new push updates the same PR
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
