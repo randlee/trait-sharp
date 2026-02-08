@@ -44,5 +44,11 @@ namespace TraitSharp.SourceGenerator.Models
         public INamedTypeSymbol? TargetTypeSymbol { get; set; }
         public Location? Location { get; set; }
         public ImplStrategy Strategy { get; set; } = ImplStrategy.Auto;
+
+        /// <summary>
+        /// When non-null, indicates the target type name could not be resolved.
+        /// Used to report TE0005 diagnostic in the output phase.
+        /// </summary>
+        public string? UnresolvedTargetTypeName { get; set; }
     }
 }

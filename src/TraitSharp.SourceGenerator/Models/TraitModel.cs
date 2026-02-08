@@ -14,6 +14,7 @@ namespace TraitSharp.SourceGenerator.Models
         public bool GenerateStaticMethods { get; set; } = true;
         public string? GeneratedNamespace { get; set; }
         public List<TraitProperty> Properties { get; set; } = new List<TraitProperty>();
+        public List<string> InvalidMembers { get; set; } = new List<string>();
         public Location? Location { get; set; }
 
         public string EffectiveNamespace => GeneratedNamespace ?? Namespace;
