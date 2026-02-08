@@ -1,4 +1,4 @@
-# TraitEmulation
+# TraitSharp
 
 Rust-like trait semantics for C#. Zero-cost polymorphism over value types.
 
@@ -13,7 +13,7 @@ Rust-like trait semantics for C#. Zero-cost polymorphism over value types.
 ## Quick Start
 
 ```csharp
-using TraitEmulation;
+using TraitSharp;
 using System.Runtime.InteropServices;
 
 // Define a trait
@@ -49,7 +49,7 @@ public static float Distance<T1, T2>(in T1 p1, in T2 p2)
 
 ## How It Works
 
-TraitEmulation uses a Roslyn source generator to bring Rust-like trait semantics to C#:
+TraitSharp uses a Roslyn source generator to bring Rust-like trait semantics to C#:
 
 1. **Trait Definition** - Mark an interface with `[Trait]` to define a contract
 2. **Layout Struct Generation** - The generator creates a `[StructLayout(Sequential)]` struct matching the trait's field layout
@@ -61,9 +61,9 @@ TraitEmulation uses a Roslyn source generator to bring Rust-like trait semantics
 
 | Package | Description |
 |---------|-------------|
-| `TraitEmulation.Attributes` | Attribute classes (`[Trait]`, `[ImplementsTrait]`, `[RegisterTraitImpl]`) |
-| `TraitEmulation.SourceGenerator` | Roslyn source generator (analyzer DLL) |
-| `TraitEmulation.Runtime` | `TraitSpan<T>`, `ReadOnlyTraitSpan<T>`, 2D variants, `ThrowHelper` |
+| `TraitSharp.Attributes` | Attribute classes (`[Trait]`, `[ImplementsTrait]`, `[RegisterTraitImpl]`) |
+| `TraitSharp.SourceGenerator` | Roslyn source generator (analyzer DLL) |
+| `TraitSharp.Runtime` | `TraitSpan<T>`, `ReadOnlyTraitSpan<T>`, 2D variants, `ThrowHelper` |
 
 ## Performance
 

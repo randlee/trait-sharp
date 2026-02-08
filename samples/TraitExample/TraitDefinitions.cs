@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
-using TraitEmulation;
+using TraitSharp;
 
 namespace TraitExample;
 

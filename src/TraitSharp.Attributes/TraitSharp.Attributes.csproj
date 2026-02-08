@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TraitSharp</RootNamespace>
+    <PackageId>TraitSharp.Attributes</PackageId>
+    <Description>Attribute classes for TraitSharp: [Trait], [ImplementsTrait], [RegisterTraitImpl], and ImplStrategy enum.</Description>
+    <PackageTags>traits;polymorphism;attributes;source-generator</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>
