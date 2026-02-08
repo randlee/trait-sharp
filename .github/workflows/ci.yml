@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel in-progress runs for the same branch/PR to avoid duplicate jobs
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore TraitSharp.sln
+
+      - name: Build
+        run: dotnet build TraitSharp.sln --no-restore
+
+      - name: Unit Tests
+        run: dotnet test TraitSharp.sln --no-build --verbosity normal
+
+      - name: Integration Tests
+        run: dotnet run --project samples/TraitExample/TraitExample.csproj --no-build
