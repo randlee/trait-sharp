@@ -97,7 +97,7 @@ namespace TraitSharp.SourceGenerator
             string shortName = model.ShortName;
             model.LayoutStructName = shortName + "Layout";
 
-            // Extract properties from the interface
+            // Extract properties from the interface and detect invalid members
             foreach (var member in interfaceSymbol.GetMembers())
             {
                 if (member is IPropertySymbol propSymbol)
@@ -110,6 +110,30 @@ namespace TraitSharp.SourceGenerator
                         HasGetter = propSymbol.GetMethod != null,
                         HasSetter = propSymbol.SetMethod != null
                     });
+                }
+                else if (member is IMethodSymbol methodSymbol)
+                {
+                    // Skip property accessors (get_X, set_X) — they are reported as methods
+                    if (methodSymbol.MethodKind == MethodKind.PropertyGet ||
+                        methodSymbol.MethodKind == MethodKind.PropertySet)
+                        continue;
+
+                    // Skip event accessors (add_X, remove_X)
+                    if (methodSymbol.MethodKind == MethodKind.EventAdd ||
+                        methodSymbol.MethodKind == MethodKind.EventRemove)
+                        continue;
+
+                    // Regular methods are allowed — traits may support methods in future
+                }
+                else if (member is IEventSymbol eventSymbol)
+                {
+                    // TE0006: events are not valid trait members
+                    model.InvalidMembers.Add(eventSymbol.Name);
+                }
+                else if (member is INamedTypeSymbol)
+                {
+                    // TE0006: nested types are not valid trait members
+                    model.InvalidMembers.Add(member.Name);
                 }
             }
 
@@ -180,7 +204,32 @@ namespace TraitSharp.SourceGenerator
             var traitTypeSymbol = attr.ConstructorArguments[0].Value as INamedTypeSymbol;
             var targetTypeSymbol = attr.ConstructorArguments[1].Value as INamedTypeSymbol;
 
-            if (traitTypeSymbol == null || targetTypeSymbol == null) return null;
+            if (traitTypeSymbol == null) return null;
+
+            // TE0005: target type could not be resolved
+            if (targetTypeSymbol == null)
+            {
+                // Extract the type name from the attribute syntax for diagnostic reporting
+                var targetTypeArg = attr.ConstructorArguments[1];
+                var unresolvedName = targetTypeArg.Value?.ToString() ?? "unknown";
+
+                // If the argument is an error type, try to extract the name from the syntax
+                if (attr.ApplicationSyntaxReference?.GetSyntax(ct) is AttributeSyntax attrSyntax
+                    && attrSyntax.ArgumentList?.Arguments.Count >= 2)
+                {
+                    var secondArg = attrSyntax.ArgumentList.Arguments[1];
+                    unresolvedName = secondArg.Expression.ToString()
+                        .Replace("typeof(", "").TrimEnd(')');
+                }
+
+                return new ExternalImplModel
+                {
+                    TraitInterfaceName = traitTypeSymbol.Name,
+                    TraitFullName = traitTypeSymbol.ToDisplayString(),
+                    UnresolvedTargetTypeName = unresolvedName,
+                    Location = context.TargetSymbol.Locations.FirstOrDefault()
+                };
+            }
 
             var model = new ExternalImplModel
             {
@@ -262,6 +311,23 @@ namespace TraitSharp.SourceGenerator
                         HasGetter = propSymbol.GetMethod != null,
                         HasSetter = propSymbol.SetMethod != null
                     });
+                }
+                else if (member is IMethodSymbol methodSymbol)
+                {
+                    // Skip property/event accessors
+                    if (methodSymbol.MethodKind == MethodKind.PropertyGet ||
+                        methodSymbol.MethodKind == MethodKind.PropertySet ||
+                        methodSymbol.MethodKind == MethodKind.EventAdd ||
+                        methodSymbol.MethodKind == MethodKind.EventRemove)
+                        continue;
+                }
+                else if (member is IEventSymbol eventSymbol)
+                {
+                    traitModel.InvalidMembers.Add(eventSymbol.Name);
+                }
+                else if (member is INamedTypeSymbol)
+                {
+                    traitModel.InvalidMembers.Add(member.Name);
                 }
             }
 
@@ -360,6 +426,16 @@ namespace TraitSharp.SourceGenerator
             // Generate external adapters
             foreach (var external in externalImpls)
             {
+                // TE0005: external target type could not be resolved
+                if (external.UnresolvedTargetTypeName != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.TE0005_ExternalTypeNotFound,
+                        external.Location,
+                        external.UnresolvedTargetTypeName));
+                    continue;
+                }
+
                 if (external.Trait == null || external.TargetTypeSymbol == null) continue;
 
                 // Run layout analysis on external type
@@ -380,6 +456,16 @@ namespace TraitSharp.SourceGenerator
 
         private static void ValidateTrait(SourceProductionContext context, TraitModel trait)
         {
+            // TE0006: invalid trait members (events, nested types, etc.)
+            if (trait.InvalidMembers.Count > 0)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    DiagnosticDescriptors.TE0006_InvalidTraitMember,
+                    trait.Location,
+                    trait.Name));
+            }
+
+            // TE0007: properties without getters
             foreach (var prop in trait.Properties)
             {
                 if (!prop.HasGetter)
