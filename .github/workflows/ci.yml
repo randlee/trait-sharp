@@ -2,14 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main, develop]
 
-# Deduplicate: when a push updates an open PR, both push and pull_request
-# events fire. Keying on PR number collapses them; the later event cancels
-# the earlier one so only one run completes. Direct pushes (no PR) use
-# the branch ref as a unique key.
+# When a new commit is pushed to a PR branch, cancel the previous run
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
