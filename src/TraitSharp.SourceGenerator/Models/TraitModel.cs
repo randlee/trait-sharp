@@ -88,6 +88,20 @@ namespace TraitSharp.SourceGenerator.Models
         /// The generated implementation method name: {Name}{OverloadSuffix}_Impl
         /// </summary>
         public string ImplMethodName => $"{Name}{OverloadSuffix}_Impl";
+
+        /// <summary>
+        /// True when the trait interface method has a default body (C# default interface method).
+        /// When true, the generator can emit the default implementation for types that
+        /// don't provide their own override via a static {Name}_Impl method.
+        /// </summary>
+        public bool HasDefaultBody { get; set; }
+
+        /// <summary>
+        /// The raw syntax text of the default method body, extracted from the interface declaration.
+        /// This is the body as-written in the trait interface, before rewriting.
+        /// Null when <see cref="HasDefaultBody"/> is false.
+        /// </summary>
+        public string? DefaultBodySyntax { get; set; }
     }
 
     internal sealed class TraitMethodParameter

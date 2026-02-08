@@ -126,6 +126,66 @@ Console.WriteLine($"Algorithms.DescribeItem(): {genericDesc}");
 Assert(genericDesc == desc, "Generic dispatch should match direct call");
 Console.WriteLine();
 
+// --- Default method implementations (Phase 9) ---
+Console.WriteLine("--- Default method implementations: IShape ---");
+
+// Rectangle: uses default Describe, provides Area + Perimeter overrides
+var rect = new Rectangle { Tag = 1, Width = 10f, Height = 5f };
+string rectDesc = rect.Describe();
+Console.WriteLine($"Rectangle.Describe() [default]: {rectDesc}");
+Assert(rectDesc.Contains("Tag=1"), "Rectangle default Describe should contain Tag=1");
+float rectArea = rect.Area();
+Console.WriteLine($"Rectangle.Area() [override]: {rectArea:F2}");
+Assert(Math.Abs(rectArea - 50f) < 0.01f, "Rectangle area should be 50");
+float rectPerim = rect.Perimeter();
+Console.WriteLine($"Rectangle.Perimeter() [override]: {rectPerim:F2}");
+Assert(Math.Abs(rectPerim - 30f) < 0.01f, "Rectangle perimeter should be 30");
+
+// Circle: overrides Describe + Area, uses default Perimeter (returns 0)
+var circle = new Circle { Tag = 2, Radius = 7f };
+string circleDesc = circle.Describe();
+Console.WriteLine($"Circle.Describe() [override]: {circleDesc}");
+Assert(circleDesc == "Circle(r=7.0, Tag=2)", "Circle override Describe should match");
+float circleArea = circle.Area();
+Console.WriteLine($"Circle.Area() [override]: {circleArea:F2}");
+Assert(Math.Abs(circleArea - MathF.PI * 49f) < 0.1f, "Circle area should be π*49");
+float circlePerim = circle.Perimeter();
+Console.WriteLine($"Circle.Perimeter() [default]: {circlePerim:F2}");
+Assert(circlePerim == 0f, "Circle default Perimeter should be 0");
+
+// Square: overrides ALL methods (no defaults used at all)
+var sq = new Square { Tag = 3, Side = 4f };
+string sqDesc = sq.Describe();
+Console.WriteLine($"Square.Describe() [override]: {sqDesc}");
+Assert(sqDesc == "Square(s=4.0, Tag=3)", "Square override Describe should match");
+float sqArea = sq.Area();
+Console.WriteLine($"Square.Area() [override]: {sqArea:F2}");
+Assert(Math.Abs(sqArea - 16f) < 0.01f, "Square area should be 16");
+float sqPerim = sq.Perimeter();
+Console.WriteLine($"Square.Perimeter() [override]: {sqPerim:F2}");
+Assert(Math.Abs(sqPerim - 16f) < 0.01f, "Square perimeter should be 16");
+
+// Generic algorithm: works with all shapes (mixes default and override methods)
+Console.WriteLine();
+Console.WriteLine("--- Generic algorithm: ShapeSummary ---");
+string rectSummary = Algorithms.ShapeSummary(ref rect);
+string circleSummary = Algorithms.ShapeSummary(ref circle);
+string sqSummary = Algorithms.ShapeSummary(ref sq);
+Console.WriteLine($"  Rectangle: {rectSummary}");
+Console.WriteLine($"  Circle:    {circleSummary}");
+Console.WriteLine($"  Square:    {sqSummary}");
+Assert(rectSummary.Contains("area=50.00"), "Rectangle summary should show area=50.00");
+Assert(circleSummary.Contains("Circle(r=7.0"), "Circle summary should use override Describe");
+Assert(sqSummary.Contains("Square(s=4.0"), "Square summary should use override Describe");
+
+// Corner case: verify same Tag value produces same default Describe output across types
+var rect2 = new Rectangle { Tag = 99, Width = 1f, Height = 1f };
+string rect2Desc = rect2.Describe();
+Console.WriteLine($"  Rectangle(Tag=99) default: {rect2Desc}");
+Assert(rect2Desc.Contains("Tag=99"), "Default Describe should reflect Tag value");
+
+Console.WriteLine();
+
 // --- Zero allocation verification ---
 Console.WriteLine("--- Zero allocation verification ---");
 long before = GC.GetAllocatedBytesForCurrentThread();

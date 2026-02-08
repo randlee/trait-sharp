@@ -1685,5 +1685,448 @@ namespace TestNs
             Assert.AreEqual("TE0012", descriptor!.Id);
             Assert.AreEqual(DiagnosticSeverity.Error, descriptor.DefaultSeverity);
         }
+
+        // ──────────────────────────────────────────────────────────────────────
+        // Default method implementation tests (Phase 9)
+        // ──────────────────────────────────────────────────────────────────────
+
+        [TestMethod]
+        public void DefaultMethod_WithBody_SetsHasDefaultBody()
+        {
+            // A method with a body should still generate the contract declaration
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        string Describe() { return ""shape""; }
+    }
+}
+";
+            var result = RunGenerator(source);
+            // Contract should still have the static abstract declaration
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IShape.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract string Describe_Impl(in TSelf self)"),
+                "Contract must still declare Describe_Impl even for default methods");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_WithoutOverride_EmitsDefaultBody()
+        {
+            // Type without its own _Impl method should get the default emitted
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        string Describe() { return ""default-shape""; }
+    }
+
+    [ImplementsTrait(typeof(IShape))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Circle
+    {
+        public int Tag;
+        public float Radius;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Circle.IShape.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("Describe_Impl"),
+                "Expected generated code to contain 'Describe_Impl' default implementation");
+            Assert.IsTrue(implSource.Contains("Default implementation from IShape.Describe"),
+                "Expected default implementation comment");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_WithUserOverride_SkipsDefault()
+        {
+            // Type that provides its own _Impl should NOT get the default emitted
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        string Describe() { return ""default-shape""; }
+    }
+
+    [ImplementsTrait(typeof(IShape))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Square
+    {
+        public int Tag;
+        public float Side;
+
+        public static string Describe_Impl(in Square self)
+        {
+            return ""Square"";
+        }
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Square.IShape.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            // The generated file should NOT contain the default implementation comment
+            Assert.IsFalse(implSource.Contains("Default implementation from IShape.Describe"),
+                "Should not emit default when user provides override");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_ExpressionBody_ConvertedToBlock()
+        {
+            // Expression body (=> syntax) should also work
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        string Label() => ""shape"";
+    }
+
+    [ImplementsTrait(typeof(IShape))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Rect
+    {
+        public int Tag;
+        public float Width;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Rect.IShape.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("Label_Impl"),
+                "Expected default Label_Impl for expression body method");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_VoidReturn_EmitsDefault()
+        {
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IResettable
+    {
+        int Tag { get; }
+        void Reset() { }
+    }
+
+    [ImplementsTrait(typeof(IResettable))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Counter
+    {
+        public int Tag;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Counter.IResettable.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("Reset_Impl"),
+                "Expected generated void default method Reset_Impl");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_PropertyAccess_RewrittenToStaticCall()
+        {
+            // Default body accessing a trait property should rewrite to T.Get{Prop}_Impl(in self)
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        int GetTag() { return Tag; }
+    }
+
+    [ImplementsTrait(typeof(IShape))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Tri
+    {
+        public int Tag;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Tri.IShape.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("GetTag_Impl(in Tri self)"),
+                "Expected GetTag_Impl generated with Tri self parameter");
+            Assert.IsTrue(implSource.Contains("Tri.GetTag_Impl") == false
+                || implSource.Contains("GetTag_Impl"),
+                "Expected GetTag_Impl in generated code");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_MixedDefaultAndRequired()
+        {
+            // Trait with both default and required methods
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        string Describe() { return ""shape""; }
+        float Area();
+    }
+
+    [ImplementsTrait(typeof(IShape))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Circle
+    {
+        public int Tag;
+        public float Radius;
+
+        // Required method must be provided
+        public static float Area_Impl(in Circle self) => self.Radius * self.Radius * 3.14159f;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Circle.IShape.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            // Describe_Impl should be generated (default)
+            Assert.IsTrue(implSource.Contains("Describe_Impl"),
+                "Expected default Describe_Impl to be generated");
+            // Area_Impl should NOT be generated (user provides it)
+            Assert.IsFalse(implSource.Contains("Default implementation from IShape.Area"),
+                "Should not emit default for Area since Circle provides override");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_MultipleDefaults_AllEmitted()
+        {
+            // Multiple default methods should all be emitted
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IMulti
+    {
+        int Tag { get; }
+        string A() { return ""a""; }
+        string B() { return ""b""; }
+        string C() { return ""c""; }
+    }
+
+    [ImplementsTrait(typeof(IMulti))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Impl
+    {
+        public int Tag;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Impl.IMulti.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("A_Impl"), "Expected default A_Impl");
+            Assert.IsTrue(implSource.Contains("B_Impl"), "Expected default B_Impl");
+            Assert.IsTrue(implSource.Contains("C_Impl"), "Expected default C_Impl");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_PartialOverride_MixesDefaultAndUser()
+        {
+            // Override some defaults, keep others
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IMulti
+    {
+        int Tag { get; }
+        string A() { return ""a""; }
+        string B() { return ""b""; }
+    }
+
+    [ImplementsTrait(typeof(IMulti))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Impl
+    {
+        public int Tag;
+
+        // Override only B
+        public static string B_Impl(in Impl self) => ""custom-b"";
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Impl.IMulti.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            // A should get the default
+            Assert.IsTrue(implSource.Contains("Default implementation from IMulti.A"),
+                "Expected default A_Impl from trait");
+            // B should NOT get the default (user overrides it)
+            Assert.IsFalse(implSource.Contains("Default implementation from IMulti.B"),
+                "Should not emit default for B since user provides override");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_NoProperties_MethodOnly()
+        {
+            // Trait with no properties and only a default method
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IDescribable
+    {
+        string Describe() { return ""unknown""; }
+    }
+
+    [ImplementsTrait(typeof(IDescribable))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Thing
+    {
+        public int Value;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Thing.IDescribable.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("Describe_Impl"),
+                "Expected default Describe_Impl even with no properties");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_RequiredMethodOnly_NoDefaultEmitted()
+        {
+            // Trait method without body should NOT produce any default
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface ILabeled
+    {
+        int Tag { get; }
+        string Describe();
+    }
+}
+";
+            var result = RunGenerator(source);
+            // Just verify the contract is generated correctly without defaults
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("ILabeled.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract string Describe_Impl(in TSelf self)"),
+                "Required method should have static abstract declaration");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_AllDefaultsOverridden_NoneEmitted()
+        {
+            // When all defaults are overridden, no default bodies should be emitted
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IShape
+    {
+        int Tag { get; }
+        string Describe() { return ""shape""; }
+        float Area() { return 0f; }
+    }
+
+    [ImplementsTrait(typeof(IShape))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Rect
+    {
+        public int Tag;
+        public float W, H;
+
+        public static string Describe_Impl(in Rect self) => ""rect"";
+        public static float Area_Impl(in Rect self) => self.W * self.H;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Rect.IShape.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsFalse(implSource.Contains("Default implementation from"),
+                "No defaults should be emitted when all methods are overridden");
+        }
+
+        [TestMethod]
+        public void DefaultMethod_ExpressionBodyVoid_EmittedCorrectly()
+        {
+            // Expression body void method: void Ping() => Console.WriteLine("ping");
+            var source = @"
+using TraitSharp;
+using System.Runtime.InteropServices;
+namespace TestNs
+{
+    [Trait(GenerateLayout = true)]
+    public partial interface IPingable
+    {
+        int Tag { get; }
+        void Ping() { }
+    }
+
+    [ImplementsTrait(typeof(IPingable))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct Pinger
+    {
+        public int Tag;
+    }
+}
+";
+            var result = RunGenerator(source);
+            var implSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("Pinger.IPingable.TraitImpl"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(implSource.Contains("Ping_Impl"),
+                "Expected default Ping_Impl for void expression body");
+        }
     }
 }

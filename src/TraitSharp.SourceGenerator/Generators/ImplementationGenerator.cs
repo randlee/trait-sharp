@@ -47,6 +47,38 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine();
             }
 
+            // Default method implementations — emit for trait methods that have a default body
+            // and where the implementing type does NOT provide its own override (static {Name}_Impl method)
+            foreach (var method in trait.Methods)
+            {
+                if (!method.HasDefaultBody) continue;
+
+                // Check if the implementing type already provides an override
+                if (HasUserOverride(impl, method)) continue;
+
+                // Rewrite the default body to use static dispatch
+                var rewrittenBody = DefaultBodyRewriter.Rewrite(
+                    method.DefaultBodySyntax!, trait, impl.TypeName);
+
+                if (rewrittenBody == null) continue; // Rewrite failed — skip (TE0013 reported elsewhere if needed)
+
+                var returnType = method.ReturnsSelf ? impl.TypeName : method.ReturnType;
+                var paramList = $"in {impl.TypeName} self";
+                foreach (var param in method.Parameters)
+                {
+                    var typeName = param.IsSelf ? impl.TypeName : param.TypeName;
+                    var modifier = string.IsNullOrEmpty(param.Modifier) ? "" : param.Modifier + " ";
+                    paramList += $", {modifier}{typeName} {param.Name}";
+                }
+
+                builder.AppendLine($"// Default implementation from {trait.Name}.{method.Name}");
+                builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+                builder.AppendLine($"public static {returnType} {method.ImplMethodName}({paramList})");
+                // Emit the rewritten body directly
+                builder.AppendLine(rewrittenBody);
+                builder.AppendLine();
+            }
+
             // TraitOffset property - use explicit interface implementation to avoid
             // name collision when a struct implements multiple traits
             builder.AppendLine($"static int {fullContractName}<{impl.TypeName}>.TraitOffset => {impl.BaseOffset};");
@@ -83,6 +115,28 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.CloseBrace();
 
             return builder.ToString();
+        }
+
+        /// <summary>
+        /// Checks whether the implementing type already provides its own {Method}_Impl override.
+        /// Scans the type's members for a static method matching the expected implementation signature.
+        /// </summary>
+        private static bool HasUserOverride(ImplementationModel impl, TraitMethod method)
+        {
+            if (impl.TypeSymbol == null) return false;
+
+            var implMethodName = method.ImplMethodName;
+            foreach (var member in impl.TypeSymbol.GetMembers())
+            {
+                if (member is Microsoft.CodeAnalysis.IMethodSymbol ms &&
+                    ms.IsStatic &&
+                    ms.Name == implMethodName)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public static string GenerateExternal(ExternalImplModel external)

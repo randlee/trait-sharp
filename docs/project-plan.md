@@ -476,45 +476,250 @@ The `Self` keyword in method signatures resolves to the implementing type:
 
 ---
 
-## Phase 9: Default Implementations (Future)
+## Phase 9: Default Method Implementations
 
-**Goal:** Allow trait methods to provide default bodies that work for any implementor.
+**Goal:** Allow trait methods to have default bodies that are auto-generated for implementors that don't provide their own `{Method}_Impl`. Default methods access trait properties and call other trait methods via the same static abstract dispatch.
 
 **Prerequisite:** Phase 8 complete (method traits)
 
+### Design
+
+**Key Insight:** C# interfaces parsed by the source generator can have default interface methods (DIM) with bodies in .NET 8+. However, the generator can't *execute* those bodies — it reads the *syntax tree*. So the strategy is:
+
+1. The user writes a method body on the trait interface (C# DIM syntax)
+2. The generator **extracts the syntax body** from the interface method
+3. When an implementing type does NOT define `{Method}_Impl`, the generator **emits the default body** as a static method on the implementation's partial struct
+4. The emitted default body rewrites property accesses → `TSelf.Get{Prop}_Impl(in self)` and method calls → `TSelf.{Method}_Impl(in self, ...)` via a syntax rewriter
+
+**No new attribute needed.** A method with a body = default impl. A method without a body = required impl (Phase 8 behavior).
+
 ```csharp
-[Trait]
-interface IPoint2D {
-    float X { get; }
-    float Y { get; }
+// Trait with mix of required and default methods
+[Trait(GenerateLayout = true)]
+public partial interface IShape
+{
+    float Width { get; }
+    float Height { get; }
 
-    [DefaultImpl]
-    float Magnitude() => MathF.Sqrt(X * X + Y * Y);
+    // Required method — implementor MUST provide Area_Impl
+    float Area();
 
-    [DefaultImpl]
-    float DistanceTo(in Self other) {
-        float dx = X - other.X;
-        float dy = Y - other.Y;
-        return MathF.Sqrt(dx * dx + dy * dy);
+    // Default method — implementor MAY override Perimeter_Impl
+    float Perimeter() => 2 * (Width + Height);
+
+    // Default method using another method
+    bool IsSquare() => MathF.Abs(Width - Height) < 0.001f;
+
+    // Default method with parameter
+    float ScaledArea(float factor) => Area() * factor;
+}
+
+// Implementation: provides required Area_Impl, inherits default Perimeter_Impl
+[ImplementsTrait(typeof(IShape))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Rectangle
+{
+    public float Width, Height;
+
+    // Required: user provides this
+    public static float Area_Impl(in Rectangle self)
+        => self.Width * self.Height;
+
+    // Perimeter_Impl, IsSquare_Impl, ScaledArea_Impl are AUTO-GENERATED
+    // by the source generator using the default bodies from IShape
+}
+
+// Implementation: overrides the default Perimeter_Impl
+[ImplementsTrait(typeof(IShape))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Circle
+{
+    public float Width, Height; // Width = Height = diameter
+
+    public static float Area_Impl(in Circle self)
+        => MathF.PI * (self.Width / 2) * (self.Width / 2);
+
+    // Override: user provides custom Perimeter_Impl
+    public static float Perimeter_Impl(in Circle self)
+        => MathF.PI * self.Width;
+}
+
+// Generic algorithm works with both
+public static float TotalArea<T>(ReadOnlySpan<T> shapes) where T : unmanaged, IShapeTrait<T>
+{
+    float total = 0;
+    for (int i = 0; i < shapes.Length; i++)
+    {
+        ref readonly var s = ref shapes[i];
+        total += IShape.Area(in s);       // Required method — each type has its own
     }
+    return total;
 }
 ```
 
-**Estimated effort:** 5–8 days (design + implementation + tests)
+### Default Body Rewriting Rules
 
-*Detailed sprint breakdown to be added after Phase 8 design is validated.*
+When emitting a default implementation for `Rectangle`, the generator rewrites the default body:
+
+| Trait syntax | Generated implementation |
+|---|---|
+| `Width` (property access) | `T.GetWidth_Impl(in self)` |
+| `Height` (property access) | `T.GetHeight_Impl(in self)` |
+| `Area()` (method call) | `T.Area_Impl(in self)` |
+| `Perimeter()` (method call) | `T.Perimeter_Impl(in self)` |
+| `ScaledArea(factor)` (method call with args) | `T.ScaledArea_Impl(in self, factor)` |
+| `other.Width` (param property) | `T.GetWidth_Impl(in other)` |
+
+### How Override Detection Works
+
+For each trait method that has a default body, the generator checks whether the implementing type already defines a matching `{Method}_Impl` static method:
+
+1. **Scan implementing type's members** for `static {ReturnType} {Method}_Impl(in {TypeName} self, ...)`
+2. If found → **skip** (user override takes precedence)
+3. If not found → **emit** the default body as `public static {ReturnType} {Method}_Impl(in {TypeName} self, ...)` in the partial struct
+
+### Sprint 9.1: TraitMethod Model — HasDefaultBody + DefaultBodySyntax
+
+**Effort:** 1 day
+
+- Add `HasDefaultBody` bool to `TraitMethod`
+- Add `DefaultBodySyntax` string property to store the raw method body text
+- In `ParseTraitMethod` (syntax pipeline): Check if the `IMethodSymbol` has a `DeclaringSyntaxReferences` with a method body. If the method's syntax node is a `MethodDeclarationSyntax` with `Body` or `ExpressionBody`, extract the body text
+- In `ParseTraitMethod` (symbol pipeline / `BuildTraitModelFromSymbol`): Same check
+
+### Sprint 9.2: Default Body Syntax Rewriter
+
+**Effort:** 2 days
+
+Create `DefaultBodyRewriter` utility class that:
+- Takes a default body string, the trait model, and the implementing type name
+- Rewrites property accesses: `{PropName}` → `{TypeName}.Get{PropName}_Impl(in self)` or `TSelf.Get{PropName}_Impl(in self)` depending on context
+- Rewrites method calls: `{MethodName}(args)` → `{TypeName}.{MethodName}_Impl(in self, args)`
+- Rewrites `self`-typed parameter accesses: `other.Width` → `{TypeName}.GetWidth_Impl(in other)`
+- Uses Roslyn `SyntaxRewriter` or regex-based text rewriting on the extracted body
+
+Implementation approach: **Syntax-based rewriting using Roslyn CSharpSyntaxTree.ParseText + SyntaxRewriter**:
+- Parse the body as a method body statement
+- Walk the syntax tree, replacing `IdentifierNameSyntax` nodes matching trait property names with the static dispatch call
+- Walk `InvocationExpressionSyntax` nodes matching trait method names
+
+### Sprint 9.3: Implementation Generator — Emit Default Bodies
+
+**Effort:** 1–2 days
+
+- In `ImplementationGenerator.Generate()`, after emitting property accessors:
+  - For each trait method with `HasDefaultBody`:
+    - Check if the implementing `INamedTypeSymbol` already defines a matching static method
+    - If NOT found: rewrite the default body and emit it as a static method
+- Override detection: scan `impl.TypeSymbol.GetMembers()` for `IMethodSymbol` with matching name pattern
+
+### Sprint 9.4: Contract Interface — Mark Optional Methods
+
+**Effort:** 0.5 days
+
+- Default methods still appear in the contract interface as `static abstract` (no change)
+- The implementing type always has the method — either user-provided or generator-emitted
+- No changes to `ConstraintInterfaceGenerator` needed
+
+### Sprint 9.5: Generator Tests for Default Methods
+
+**Effort:** 2 days
+
+| Test | Description |
+|------|-------------|
+| `Default_VoidMethod_GeneratesDefaultBody` | Trait with `void Log() => Console.WriteLine("logged");` — default body emitted |
+| `Default_ReturningMethod_GeneratesDefaultBody` | Trait with `int Double() => Value * 2;` — return expression emitted |
+| `Default_PropertyAccess_Rewritten` | Default body accessing `Width` rewrites to `T.GetWidth_Impl(in self)` |
+| `Default_MethodCall_Rewritten` | Default body calling `Area()` rewrites to `T.Area_Impl(in self)` |
+| `Default_MethodCallWithArgs_Rewritten` | Default body calling `Scale(2.0f)` rewrites correctly |
+| `Default_UserOverride_Skipped` | When impl provides `Method_Impl`, no default emitted |
+| `Default_MixedRequiredAndDefault` | Trait with 1 required + 1 default → only default is auto-generated |
+| `Default_AllDefaults_NoUserCode` | All methods have defaults → all auto-generated |
+| `Default_InheritedDefault_Propagated` | Base trait default method flows to derived trait impl |
+| `Default_SelfParam_Rewritten` | Default body with Self-typed param: `other.Width` rewrites correctly |
+| `Default_ExpressionBody_Handled` | `float Area() => Width * Height;` expression body extracted |
+| `Default_BlockBody_Handled` | `float Area() { return Width * Height; }` block body extracted |
+| `Default_ChainedMethodCalls` | Default body calling another default method |
+| `Default_NoDefaultBody_RemainsRequired` | Method without body → still required (TE0012-like enforcement) |
+
+### Sprint 9.6: Consumer Example — TraitExample Sample Updates
+
+**Effort:** 1 day
+
+Add comprehensive consumer examples to `samples/TraitExample/` that demonstrate ALL Phase 9 features in actual working code, including corner cases:
+
+**New trait definitions:**
+
+```csharp
+// IShape: mix of required and default methods, property access in defaults
+[Trait(GenerateLayout = true)]
+public partial interface IShape
+{
+    float Width { get; }
+    float Height { get; }
+    float Area();                                    // Required
+    float Perimeter() => 2 * (Width + Height);       // Default (property access)
+    bool IsSquare() => MathF.Abs(Width - Height) < 0.001f; // Default (property comparison)
+    float ScaledArea(float factor) => Area() * factor; // Default (calls required method)
+}
+```
+
+**New implementing structs:**
+
+```csharp
+// Rectangle: provides required Area_Impl, inherits ALL defaults
+[ImplementsTrait(typeof(IShape))]
+public partial struct Rectangle { float Width, Height; ... }
+
+// Circle: provides required Area_Impl + overrides Perimeter_Impl
+[ImplementsTrait(typeof(IShape))]
+public partial struct Circle { float Width, Height; ... }
+
+// Square: provides required Area_Impl + overrides IsSquare (always true)
+[ImplementsTrait(typeof(IShape))]
+public partial struct Square { float Width, Height; ... }
+```
+
+**Integration tests in Program.cs covering corner cases:**
+
+| Test | Corner case |
+|------|------------|
+| Rectangle.Area() | Required method — user-provided |
+| Rectangle.Perimeter() | Default method accessing properties |
+| Rectangle.IsSquare() for non-square | Default method with float comparison |
+| Rectangle.IsSquare() for 5x5 | Default method returning true |
+| Rectangle.ScaledArea(2) | Default method calling required method |
+| Circle.Area() | Required method — user-provided (π*r²) |
+| Circle.Perimeter() | User OVERRIDE of default (π*d) |
+| Circle.IsSquare() | Default inherited (Width==Height for circle) |
+| Square.IsSquare() | User OVERRIDE always returns true |
+| Generic dispatch via IShape constraint | All methods dispatch through trait constraint |
+| LabeledItem still works | Existing Phase 8 method trait unchanged |
+| DataPoint/ICoordinate still works | Existing property traits unchanged |
+
+### Phase 9 Summary
+
+| Sprint | Effort |
+|--------|--------|
+| 9.1 Model: HasDefaultBody + extraction | 1 day |
+| 9.2 Default body syntax rewriter | 2 days |
+| 9.3 Implementation generator: emit defaults | 1–2 days |
+| 9.4 Contract interface: no change needed | 0.5 days |
+| 9.5 Generator tests (14 new tests) | 2 days |
+| 9.6 Consumer example + corner case integration tests | 1 day |
+| **Total** | **~6–8 days** |
 
 ---
 
 ## Timeline Overview
 
 ```
-Phase 6: Test Coverage Hardening       ~10–15 days    (71 new tests)
-Phase 7: Trait Inheritance              ~7–11 days     (14 new tests)
-Phase 8: Method Traits                  ~11–17 days    (15 new tests)
-Phase 9: Default Implementations        ~5–8 days      (future)
+Phase 6: Test Coverage Hardening       ✅ Done        (71 new tests)
+Phase 7: Trait Inheritance              ✅ Done        (14 new tests)
+Phase 8: Method Traits                  ✅ Done        (12 new tests)
+Phase 9: Default Implementations        ~6–8 days      (14+ new tests)
                                         ───────────
-Total Phases 6–8:                       ~28–43 days    (100 new tests)
+Total Phases 6–9:                       ~35–50 days    (111+ new tests)
 ```
 
 ---
@@ -526,7 +731,7 @@ Total Phases 6–8:                       ~28–43 days    (100 new tests)
 | TE0010 | 7 | Ambiguous inherited field: two unrelated base traits define same-named field with different types |
 | TE0011 | 7 | Circular trait inheritance detected |
 | TE0012 | 8 | Invalid method signature in trait interface |
-| TE0013 | 8 | Ambiguous inherited method from multiple base traits |
+| TE0013 | 9 | Default body rewrite failure (syntax could not be parsed) |
 
 ---
 
@@ -539,6 +744,9 @@ Total Phases 6–8:                       ~28–43 days    (100 new tests)
 | Method overload resolution complexity | Medium | Simple suffix-based disambiguation; limit to parameter count differences |
 | .NET version compatibility for static abstract members | Medium | Target net7.0+ for method traits; property traits remain netstandard2.0 |
 | Performance regression from inheritance resolution | Low | Cache resolved hierarchies; benchmark generator speed |
+| Default body syntax rewriting correctness | High | Roslyn syntax rewriter with comprehensive test coverage; fallback to string substitution |
+| Override detection false positives | Medium | Strict signature matching: name + parameter count + types |
+| Expression vs block body handling | Low | Support both forms; normalize to block body internally |
 
 ---
 
@@ -546,5 +754,5 @@ Total Phases 6–8:                       ~28–43 days    (100 new tests)
 
 1. **Mutable methods:** Should traits support `ref Self` (mutable self)? Current design uses `in Self` (readonly).
 2. **Generic method parameters:** Can trait methods have their own generic parameters beyond `Self`?
-3. **Partial default overrides:** Can an implementation override some default methods but inherit others?
+3. ~~**Partial default overrides:** Can an implementation override some default methods but inherit others?~~ → **Resolved in Phase 9:** Yes. Each default method is independently overridable.
 4. **Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?
