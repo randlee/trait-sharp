@@ -1,4 +1,4 @@
-# Trait Emulation for C# - Complete Design Specification
+# TraitSharp — Complete Design Specification
 
 ## Executive Summary
 
@@ -266,16 +266,15 @@ public static class ICoordinateExternalImpls {
 ### Pattern 1: Direct Field Access (Fastest)
 
 ```csharp
-public static void ApplyFlatField<T>(Span<T> items, Span<float> weights, int width) 
+public static int SumCoordinates<T>(ReadOnlySpan<T> items)
     where T : unmanaged, ITrait<ICoordinate, T>
 {
+    int sum = 0;
     for (int i = 0; i < items.Length; i++) {
-        ref var item = ref items[i];
-        ref readonly var coord = ref item.AsCoordinate();
-        
-        int offset = coord.Y * width + coord.X;  // Direct field access!
-        // ... apply correction[offset]
+        ref readonly var coord = ref items[i].AsCoordinate();
+        sum += coord.X + coord.Y;  // Direct field access!
     }
+    return sum;
 }
 ```
 
@@ -619,33 +618,27 @@ TraitSharp/
 │   │   │   └── TraitSpanFactoryGenerator.cs     (AsXxxSpan extensions)
 │   │   ├── Analyzers/
 │   │   │   ├── LayoutCompatibilityAnalyzer.cs
-│   │   │   ├── TraitUsageAnalyzer.cs
 │   │   │   └── DiagnosticDescriptors.cs
 │   │   └── Utilities/
 │   │       ├── RoslynExtensions.cs
-│   │       ├── CodeBuilder.cs
-│   │       └── SymbolCache.cs
-│   ├── TraitSharp.Runtime/
-│   │   ├── ReadOnlyTraitSpan.cs
-│   │   ├── TraitSpan.cs
-│   │   ├── ReadOnlyTraitSpan2D.cs
-│   │   ├── TraitSpan2D.cs
-│   │   └── ThrowHelper.cs
-│   └── TraitSharp/
-│       └── (Empty - runtime placeholder for docs)
+│   │       └── CodeBuilder.cs
+│   └── TraitSharp.Runtime/
+│       ├── ReadOnlyTraitSpan.cs
+│       ├── TraitSpan.cs
+│       ├── ReadOnlyTraitSpan2D.cs
+│       ├── TraitSpan2D.cs
+│       └── ThrowHelper.cs
 ├── samples/
 │   └── TraitExample/
 │       └── Program.cs
 └── tests/
     ├── TraitSharp.Generator.Tests/
     │   └── GeneratorTests.cs                    (Compile-time diagnostic tests)
-    ├── TraitSharp.Runtime.Tests/
-    │   ├── LayoutCastTests.cs                   (Zero-copy / pointer identity)
-    │   ├── TraitSpanTests.cs                    (1D span operations)
-    │   ├── TraitSpan2DTests.cs                  (2D span operations)
-    │   └── PerformanceRegressionTests.cs        (Zero-allocation verification)
-    └── TraitSharp.Benchmarks/
-        └── TraitBenchmark.cs                    (BenchmarkDotNet)
+    └── TraitSharp.Runtime.Tests/
+        ├── LayoutCastTests.cs                   (Zero-copy / pointer identity)
+        ├── TraitSpanTests.cs                    (1D span operations)
+        ├── TraitSpan2DTests.cs                  (2D span operations)
+        └── PerformanceRegressionTests.cs        (Zero-allocation verification)
 ```
 
 ### Generator Entry Point
@@ -1839,25 +1832,20 @@ public partial struct Point3D {
 ```csharp
 public static class Processing {
     /// <summary>
-    /// Apply to any type with coordinates.
+    /// Translate all coordinate-bearing items by a fixed offset.
+    /// Works with any type that implements ICoordinate.
     /// </summary>
-    public static void Apply<T>(
-        Span<T> items,
-        ReadOnlySpan<float> weights,
-        int width)
+    public static int SumCoordinates<T>(ReadOnlySpan<T> items)
         where T : unmanaged, ITrait<ICoordinate, T>
     {
+        int sum = 0;
         for (int i = 0; i < items.Length; i++) {
-            ref var item = ref items[i];
-            ref readonly var coord = ref item.AsCoordinate();
-            
-            int offset = coord.Y * width + coord.X;
-            float factor = correction[offset];
-            
-            // Apply correction (type-specific logic would go here)
+            ref readonly var coord = ref items[i].AsCoordinate();
+            sum += coord.X + coord.Y;
         }
+        return sum;
     }
-    
+
     /// <summary>
     /// Compute distance between any two coordinate types.
     /// </summary>
@@ -1890,7 +1878,7 @@ public static class Processing {
 ```csharp
 // Works with custom types
 DataPoint[] dataPoints = LoadData();
-Processing.Apply(dataPoints, factors, width);
+int total = Processing.SumCoordinates(dataPoints);
 
 // Works with System types
 System.Drawing.Point[] points = GetPoints();
@@ -1899,7 +1887,7 @@ var dataPoint = dataPoints[0];
 float dist = Processing.Distance(sysPoint, dataPoint);  // Mixed types!
 
 // No boxing, zero copy, full type safety
-Console.WriteLine($"Distance: {dist}");
+Console.WriteLine($"Sum: {total}, Distance: {dist}");
 ```
 
 ---
@@ -2836,19 +2824,17 @@ using System.Numerics;
 namespace TraitExamples;
 
 public static class Processing {
-    public static void ApplyFlatField<T>(
-        Span<T> items,
-        ReadOnlySpan<float> weights,
-        int width)
+    public static int SumCoordinates<T>(ReadOnlySpan<T> items)
         where T : unmanaged, ITrait<ICoordinate, T>
     {
+        int sum = 0;
         for (int i = 0; i < items.Length; i++) {
             ref readonly var coord = ref items[i].AsCoordinate();
-            int offset = coord.Y * width + coord.X;
-            // Apply correction...
+            sum += coord.X + coord.Y;
         }
+        return sum;
     }
-    
+
     public static float Distance<T1, T2>(in T1 p1, in T2 p2)
         where T1 : unmanaged, ITrait<ICoordinate, T1>
         where T2 : unmanaged, ITrait<ICoordinate, T2>
@@ -2878,51 +2864,51 @@ Console.WriteLine($"Distance: {dist}");
 
 ## Implementation Checklist
 
-### Phase 1: Core Generator + Layout Analysis
-- [ ] Attribute definitions (TraitAttribute, ImplementsTraitAttribute, RegisterTraitImplAttribute, ImplStrategy)
-- [ ] Trait interface parser
-- [ ] Layout struct generator
-- [ ] Constraint interface generator
-- [ ] Extension methods generator
-- [ ] Implementation generator (reinterpret only — no fallback)
-- [ ] Alignment-aware field offset calculator
-- [ ] Type size resolver (including nested struct recursion)
-- [ ] Layout compatibility checker with offset detection
-- [ ] Diagnostic reporter (TE0001–TE0009)
-- [ ] **Tests: all Generator Diagnostic Tests pass**
-- [ ] **Tests: all Runtime Correctness Tests pass (prefix layout)**
+### Phase 1: Core Generator + Layout Analysis ✅
+- [x] Attribute definitions (TraitAttribute, ImplementsTraitAttribute, RegisterTraitImplAttribute, ImplStrategy)
+- [x] Trait interface parser
+- [x] Layout struct generator
+- [x] Constraint interface generator
+- [x] Extension methods generator
+- [x] Implementation generator (reinterpret only — no fallback)
+- [x] Alignment-aware field offset calculator
+- [x] Type size resolver (including nested struct recursion)
+- [x] Layout compatibility checker with offset detection
+- [x] Diagnostic reporter (TE0001–TE0009)
+- [x] **Tests: all Generator Diagnostic Tests pass**
+- [x] **Tests: all Runtime Correctness Tests pass (prefix layout)**
 
-### Phase 2: Offset Traits + External Type Support
-- [ ] Auto-detection of non-zero base offset for trait fields
-- [ ] Offset-aware codegen (AddByteOffset in AsLayout)
-- [ ] Assembly-level attribute parser (RegisterTraitImplAttribute)
-- [ ] External adapter generator
-- [ ] System type registry
-- [ ] **Tests: all offset layout tests pass (Rectangle → IPoint2D + ISize2D)**
-- [ ] **Tests: external type extension method tests pass**
+### Phase 2: Offset Traits + External Type Support ✅
+- [x] Auto-detection of non-zero base offset for trait fields
+- [x] Offset-aware codegen (AddByteOffset in AsLayout)
+- [x] Assembly-level attribute parser (RegisterTraitImplAttribute)
+- [x] External adapter generator
+- [x] System type registry
+- [x] **Tests: all offset layout tests pass (Rectangle → IPoint2D + ISize2D)**
+- [x] **Tests: external type extension method tests pass**
 
-### Phase 3: Trait Span Types
-- [ ] ReadOnlyTraitSpan\<TLayout\> ref struct
-- [ ] TraitSpan\<TLayout\> ref struct
-- [ ] ReadOnlyTraitSpan2D\<TLayout\> ref struct
-- [ ] TraitSpan2D\<TLayout\> ref struct
-- [ ] ThrowHelper for bounds checking
-- [ ] Generated factory extension methods (AsXxxSpan, AsXxxTraitSpan, 2D variants)
-- [ ] Implicit conversion operators (TraitSpan → ReadOnlyTraitSpan, 2D variant)
-- [ ] **Tests: all Trait Span Tests pass**
-- [ ] **Tests: all Trait Span 2D Tests pass**
-- [ ] **Tests: Performance Regression Tests pass (zero allocation)**
+### Phase 3: Trait Span Types ✅
+- [x] ReadOnlyTraitSpan\<TLayout\> ref struct
+- [x] TraitSpan\<TLayout\> ref struct
+- [x] ReadOnlyTraitSpan2D\<TLayout\> ref struct
+- [x] TraitSpan2D\<TLayout\> ref struct
+- [x] ThrowHelper for bounds checking
+- [x] Generated factory extension methods (AsXxxSpan, AsXxxTraitSpan, 2D variants)
+- [x] Implicit conversion operators (TraitSpan → ReadOnlyTraitSpan, 2D variant)
+- [x] **Tests: all Trait Span Tests pass**
+- [x] **Tests: all Trait Span 2D Tests pass**
+- [x] **Tests: Performance Regression Tests pass (zero allocation)**
 
-### Phase 4: Documentation + Samples
-- [ ] XML doc comments on all public APIs
-- [ ] README with examples
-- [ ] Migration guide
-- [ ] API reference
-- [ ] Sample project (TraitExample)
+### Phase 4: Documentation + Samples ✅
+- [x] XML doc comments on all public APIs
+- [x] README with examples
+- [x] Migration guide
+- [x] API reference
+- [x] Sample project (TraitExample)
 
-### Phase 5: Packaging
-- [ ] NuGet package build (separate Attributes + Generator packages)
-- [ ] Analyzer packaging
+### Phase 5: Packaging ✅
+- [x] NuGet package build (separate Attributes + Generator + Runtime packages)
+- [x] Analyzer packaging
 - [ ] Symbol packages
 - [ ] Release automation
 
