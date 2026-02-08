@@ -597,14 +597,14 @@ partial struct SplitPoint {
 ### Project Structure
 
 ```
-TraitEmulation/
+TraitSharp/
 ├── src/
-│   ├── TraitEmulation.Attributes/
+│   ├── TraitSharp.Attributes/
 │   │   ├── TraitAttribute.cs
 │   │   ├── ImplementsTraitAttribute.cs
 │   │   ├── RegisterTraitImplAttribute.cs
 │   │   └── ImplStrategy.cs
-│   ├── TraitEmulation.SourceGenerator/
+│   ├── TraitSharp.SourceGenerator/
 │   │   ├── TraitGenerator.cs                    (Main generator)
 │   │   ├── Models/
 │   │   │   ├── TraitModel.cs                    (Parsed trait info)
@@ -625,26 +625,26 @@ TraitEmulation/
 │   │       ├── RoslynExtensions.cs
 │   │       ├── CodeBuilder.cs
 │   │       └── SymbolCache.cs
-│   ├── TraitEmulation.Runtime/
+│   ├── TraitSharp.Runtime/
 │   │   ├── ReadOnlyTraitSpan.cs
 │   │   ├── TraitSpan.cs
 │   │   ├── ReadOnlyTraitSpan2D.cs
 │   │   ├── TraitSpan2D.cs
 │   │   └── ThrowHelper.cs
-│   └── TraitEmulation/
+│   └── TraitSharp/
 │       └── (Empty - runtime placeholder for docs)
 ├── samples/
 │   └── TraitExample/
 │       └── Program.cs
 └── tests/
-    ├── TraitEmulation.Generator.Tests/
+    ├── TraitSharp.Generator.Tests/
     │   └── GeneratorTests.cs                    (Compile-time diagnostic tests)
-    ├── TraitEmulation.Runtime.Tests/
+    ├── TraitSharp.Runtime.Tests/
     │   ├── LayoutCastTests.cs                   (Zero-copy / pointer identity)
     │   ├── TraitSpanTests.cs                    (1D span operations)
     │   ├── TraitSpan2DTests.cs                  (2D span operations)
     │   └── PerformanceRegressionTests.cs        (Zero-allocation verification)
-    └── TraitEmulation.Benchmarks/
+    └── TraitSharp.Benchmarks/
         └── TraitBenchmark.cs                    (BenchmarkDotNet)
 ```
 
@@ -657,7 +657,7 @@ public sealed class TraitGenerator : IIncrementalGenerator {
         // 1. Collect trait interfaces
         var traitInterfaces = context.SyntaxProvider
             .ForAttributeWithMetadataName(
-                "TraitEmulation.TraitAttribute",
+                "TraitSharp.TraitAttribute",
                 predicate: (node, _) => node is InterfaceDeclarationSyntax,
                 transform: GetTraitModel)
             .Where(t => t is not null);
@@ -665,7 +665,7 @@ public sealed class TraitGenerator : IIncrementalGenerator {
         // 2. Collect trait implementations
         var implementations = context.SyntaxProvider
             .ForAttributeWithMetadataName(
-                "TraitEmulation.ImplementsTraitAttribute",
+                "TraitSharp.ImplementsTraitAttribute",
                 predicate: (node, _) => node is StructDeclarationSyntax or ClassDeclarationSyntax,
                 transform: GetImplementationModel)
             .Where(i => i is not null);
@@ -673,7 +673,7 @@ public sealed class TraitGenerator : IIncrementalGenerator {
         // 3. Collect external registrations
         var externalImpls = context.SyntaxProvider
             .ForAttributeWithMetadataName(
-                "TraitEmulation.RegisterTraitImplAttribute",
+                "TraitSharp.RegisterTraitImplAttribute",
                 predicate: (node, _) => true,
                 transform: GetExternalImplModel)
             .Where(e => e is not null);
@@ -1793,7 +1793,7 @@ var subRegion = grid2D.Slice(rowStart: 2, colStart: 5, height: 3, width: 10);
 ### Define Traits
 
 ```csharp
-using TraitEmulation;
+using TraitSharp;
 
 [Trait(GenerateLayout = true)]
 public interface ICoordinate {
@@ -1988,7 +1988,7 @@ public class GeneratorTests {
     public void Generator_ProducesLayoutStruct()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             [Trait]
             interface IPoint { int X { get; } int Y { get; } }
             """;
@@ -2001,7 +2001,7 @@ public class GeneratorTests {
     public void Generator_ProducesConstraintInterface()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             [Trait]
             interface IPoint { int X { get; } int Y { get; } }
             """;
@@ -2014,7 +2014,7 @@ public class GeneratorTests {
     public void Generator_ProducesExtensionMethods()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             [Trait]
             interface IPoint { int X { get; } int Y { get; } }
             """;
@@ -2027,7 +2027,7 @@ public class GeneratorTests {
     public void TE0001_MissingRequiredField()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint))]
@@ -2042,7 +2042,7 @@ public class GeneratorTests {
     public void TE0002_PropertyTypeMismatch()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint))]
@@ -2057,7 +2057,7 @@ public class GeneratorTests {
     public void TE0003_FieldOrderMismatch()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint))]
@@ -2072,7 +2072,7 @@ public class GeneratorTests {
     public void TE0004_MissingStructLayout()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint))]
             partial struct Bad { public int X, Y; }
@@ -2085,7 +2085,7 @@ public class GeneratorTests {
     public void TE0009_NonContiguousFields()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint))]
@@ -2101,7 +2101,7 @@ public class GeneratorTests {
     public void ValidPrefixMatch_NoErrors()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint))]
@@ -2116,7 +2116,7 @@ public class GeneratorTests {
     public void ValidOffsetMatch_NoErrors()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [Trait] interface ISize { int Width { get; } int Height { get; } }
@@ -2133,7 +2133,7 @@ public class GeneratorTests {
     public void FieldMapping_CustomNames_NoErrors()
     {
         var source = """
-            using TraitEmulation;
+            using TraitSharp;
             using System.Runtime.InteropServices;
             [Trait] interface IPoint { int X { get; } int Y { get; } }
             [ImplementsTrait(typeof(IPoint), Strategy = ImplStrategy.FieldMapping,
@@ -2671,20 +2671,20 @@ The project ships as **three NuGet packages**:
 
 | Package | Contents | Dependency |
 |---------|----------|------------|
-| `TraitEmulation.Attributes` | Attribute classes (`[Trait]`, `[ImplementsTrait]`, etc.) | None |
-| `TraitEmulation` | Source generator (analyzer DLL) | TraitEmulation.Attributes |
-| `TraitEmulation.Runtime` | `TraitSpan<T>`, `ReadOnlyTraitSpan<T>`, 2D variants, ThrowHelper | None |
+| `TraitSharp.Attributes` | Attribute classes (`[Trait]`, `[ImplementsTrait]`, etc.) | None |
+| `TraitSharp` | Source generator (analyzer DLL) | TraitSharp.Attributes |
+| `TraitSharp.Runtime` | `TraitSpan<T>`, `ReadOnlyTraitSpan<T>`, 2D variants, ThrowHelper | None |
 
-Consumers reference `TraitEmulation` (which transitively pulls in Attributes) plus `TraitEmulation.Runtime` if they use trait spans.
+Consumers reference `TraitSharp` (which transitively pulls in Attributes) plus `TraitSharp.Runtime` if they use trait spans.
 
-#### TraitEmulation (Source Generator)
+#### TraitSharp (Source Generator)
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>preview</LangVersion>
-    <PackageId>TraitEmulation</PackageId>
+    <PackageId>TraitSharp</PackageId>
     <Version>1.0.0</Version>
     <Authors>Rand Lee</Authors>
     <Description>
@@ -2708,18 +2708,18 @@ Consumers reference `TraitEmulation` (which transitively pulls in Attributes) pl
 </Project>
 ```
 
-#### TraitEmulation.Runtime
+#### TraitSharp.Runtime
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <LangVersion>preview</LangVersion>
-    <PackageId>TraitEmulation.Runtime</PackageId>
+    <PackageId>TraitSharp.Runtime</PackageId>
     <Version>1.0.0</Version>
     <Authors>Rand Lee</Authors>
     <Description>
-      Runtime types for TraitEmulation: TraitSpan, ReadOnlyTraitSpan,
+      Runtime types for TraitSharp: TraitSpan, ReadOnlyTraitSpan,
       and 2D variants for strided trait-view iteration over struct arrays.
     </Description>
     <PackageTags>traits;span;ref-struct;high-performance</PackageTags>
@@ -2731,7 +2731,7 @@ Consumers reference `TraitEmulation` (which transitively pulls in Attributes) pl
 ### README.md
 
 ```markdown
-# TraitEmulation
+# TraitSharp
 
 Rust-like trait semantics for C#. Zero-cost polymorphism over value types.
 
@@ -2746,7 +2746,7 @@ Rust-like trait semantics for C#. Zero-cost polymorphism over value types.
 ## Quick Start
 
 ```csharp
-using TraitEmulation;
+using TraitSharp;
 
 // Define trait
 [Trait]
@@ -2790,7 +2790,7 @@ See [Design Document](DESIGN.md) for complete specification.
 
 ```csharp
 // File: Traits.cs
-using TraitEmulation;
+using TraitSharp;
 
 namespace TraitExamples;
 
@@ -2809,7 +2809,7 @@ public interface IColorValue {
 
 // File: DataPoint.cs
 using System.Runtime.InteropServices;
-using TraitEmulation;
+using TraitSharp;
 
 namespace TraitExamples;
 
@@ -2822,7 +2822,7 @@ public partial struct DataPoint {
 }
 
 // File: AssemblyInfo.cs
-using TraitEmulation;
+using TraitSharp;
 using TraitExamples;
 
 [assembly: RegisterTraitImpl(typeof(ICoordinate), typeof(System.Drawing.Point))]

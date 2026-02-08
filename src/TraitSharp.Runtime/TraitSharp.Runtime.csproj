@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>TraitSharp.Runtime</RootNamespace>
+    <PackageId>TraitSharp.Runtime</PackageId>
+    <Description>Runtime types for TraitSharp: TraitSpan, ReadOnlyTraitSpan, and 2D variants for strided trait-view iteration over struct arrays.</Description>
+    <PackageTags>traits;span;ref-struct;high-performance</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

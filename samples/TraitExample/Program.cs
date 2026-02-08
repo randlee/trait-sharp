@@ -1,13 +1,13 @@
 using System;
-using TraitEmulation.Runtime;
+using TraitSharp.Runtime;
 using TraitExample;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TraitEmulation Example
+// TraitSharp Example
 // Demonstrates zero-cost polymorphism over value types using trait emulation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-Console.WriteLine("=== TraitEmulation Example ===");
+Console.WriteLine("=== TraitSharp Example ===");
 Console.WriteLine();
 
 // --- Trait definitions and struct implementations ---
