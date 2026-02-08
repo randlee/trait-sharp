@@ -3,11 +3,21 @@ using TraitSharp.Runtime;
 using TraitExample;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TraitSharp Example
+// TraitSharp Integration Tests
 // Demonstrates zero-cost polymorphism over value types using trait emulation.
+// Assertions validate generated code correctness; non-zero exit on failure.
 // ─────────────────────────────────────────────────────────────────────────────
 
-Console.WriteLine("=== TraitSharp Example ===");
+int passCount = 0;
+int failCount = 0;
+
+void Assert(bool condition, string message)
+{
+    if (condition) { passCount++; }
+    else { failCount++; Console.WriteLine($"  [FAIL] {message}"); }
+}
+
+Console.WriteLine("=== TraitSharp Integration Tests ===");
 Console.WriteLine();
 
 // --- Trait definitions and struct implementations ---
@@ -27,6 +37,15 @@ Console.WriteLine($"DataPoint as color: R={color.R}, G={color.G}, B={color.B}");
 Console.WriteLine($"Via extension methods: X={dp.GetX()}, Y={dp.GetY()}");
 Console.WriteLine();
 
+// Assertions for coordinate and color values
+Assert(coord.X == 10, "coord.X should be 10");
+Assert(coord.Y == 20, "coord.Y should be 20");
+Assert(color.R == 255, "color.R should be 255");
+Assert(color.G == 128, "color.G should be 128");
+Assert(color.B == 64, "color.B should be 64");
+Assert(dp.GetX() == 10, "dp.GetX() should be 10");
+Assert(dp.GetY() == 20, "dp.GetY() should be 20");
+
 // --- Multiple types implementing the same trait ---
 Console.WriteLine("--- Generic algorithm: Distance ---");
 
@@ -37,11 +56,17 @@ float dist = Algorithms.Distance(ref dp, ref point3d);
 Console.WriteLine($"Distance(DataPoint({dp.X},{dp.Y}), Point3D({point3d.X},{point3d.Y})): {dist:F2}");
 Console.WriteLine();
 
+// Assertion for distance calculation
+Assert(Math.Abs(dist - 28.28f) < 0.1f, "Distance should be approximately 28.28");
+
 // --- Color trait ---
 Console.WriteLine("--- Color trait: Luminance ---");
 byte luma = Algorithms.ToLuminance(ref dp);
 Console.WriteLine($"Luminance of ({dp.R}, {dp.G}, {dp.B}): {luma}");
 Console.WriteLine();
+
+// Assertion for luminance
+Assert(luma == 158, "Luminance should be 158");
 
 // --- TraitSpan iteration ---
 Console.WriteLine("--- TraitSpan: iterate coordinate views over an array ---");
@@ -63,6 +88,9 @@ foreach (ref readonly var c in coordSpan)
 }
 Console.WriteLine();
 
+// Assertion for span length
+Assert(coordSpan.Length == 4, "coordSpan.Length should be 4");
+
 // Mutable TraitSpan - modify coordinates in-place
 Console.WriteLine("--- Mutable TraitSpan: translate all points ---");
 var mutableSpan = points.AsSpan().AsCoordinateTraitSpan();
@@ -80,6 +108,10 @@ foreach (var p in points)
 }
 Console.WriteLine();
 
+// Assertions for translation
+Assert(points[0].X == 100, "points[0].X should be 100 after translation");
+Assert(points[0].Y == 200, "points[0].Y should be 200 after translation");
+
 // --- Zero allocation verification ---
 Console.WriteLine("--- Zero allocation verification ---");
 long before = GC.GetAllocatedBytesForCurrentThread();
@@ -95,4 +127,12 @@ long after = GC.GetAllocatedBytesForCurrentThread();
 Console.WriteLine($"100,000 layout casts allocated: {after - before} bytes (expected: 0)");
 Console.WriteLine();
 
+// Assertion for zero allocation
+Assert((after - before) == 0, "Zero allocations expected for layout casts");
+
 Console.WriteLine("=== Done ===");
+Console.WriteLine();
+
+// Print test summary and exit with appropriate code
+Console.WriteLine($"Integration Tests: {passCount} passed, {failCount} failed");
+return failCount > 0 ? 1 : 0;

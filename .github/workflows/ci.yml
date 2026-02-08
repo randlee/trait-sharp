@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+
+# When a new commit is pushed to a PR branch, cancel the previous run
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore TraitSharp.sln
+
+      - name: Build
+        run: dotnet build TraitSharp.sln --no-restore
+
+      - name: Unit Tests
+        run: dotnet test TraitSharp.sln --no-build --verbosity normal
+
+      - name: Integration Tests
+        run: dotnet run --project samples/TraitExample/TraitExample.csproj --no-build

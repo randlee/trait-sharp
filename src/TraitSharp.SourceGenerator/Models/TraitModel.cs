@@ -17,6 +17,22 @@ namespace TraitSharp.SourceGenerator.Models
         public List<string> InvalidMembers { get; set; } = new List<string>();
         public Location? Location { get; set; }
 
+        /// <summary>
+        /// Base traits this trait inherits from (direct [Trait]-annotated base interfaces).
+        /// </summary>
+        public List<TraitModel> BaseTraits { get; set; } = new List<TraitModel>();
+
+        /// <summary>
+        /// Merged property list including inherited properties (depth-first, diamond-deduplicated).
+        /// Empty until <see cref="TraitGenerator.BuildAllProperties"/> is called.
+        /// </summary>
+        public List<TraitProperty> AllProperties { get; set; } = new List<TraitProperty>();
+
+        /// <summary>
+        /// True when this trait has at least one base trait.
+        /// </summary>
+        public bool HasBaseTraits => BaseTraits.Count > 0;
+
         public string EffectiveNamespace => GeneratedNamespace ?? Namespace;
 
         /// <summary>

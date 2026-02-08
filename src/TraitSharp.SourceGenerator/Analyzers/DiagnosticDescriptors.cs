@@ -77,5 +77,13 @@ namespace TraitSharp.SourceGenerator.Analyzers
             category: Category,
             defaultSeverity: DiagnosticSeverity.Error,
             isEnabledByDefault: true);
+
+        public static readonly DiagnosticDescriptor TE0010_AmbiguousInheritedField = new(
+            id: "TE0010",
+            title: "Ambiguous inherited trait field",
+            messageFormat: "Inherited property '{0}' is ambiguous in trait '{1}': type '{2}' from '{3}' conflicts with type '{4}' from '{5}'",
+            category: Category,
+            defaultSeverity: DiagnosticSeverity.Error,
+            isEnabledByDefault: true);
     }
 }

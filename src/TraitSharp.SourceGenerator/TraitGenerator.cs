@@ -137,6 +137,14 @@ namespace TraitSharp.SourceGenerator
                 }
             }
 
+            // Resolve trait inheritance: collect base traits and merge properties
+            ResolveBaseTraits(interfaceSymbol, model, new HashSet<string>());
+            BuildAllProperties(model);
+            if (model.AllProperties.Count > 0 && model.HasBaseTraits)
+            {
+                model.Properties = new List<TraitProperty>(model.AllProperties);
+            }
+
             return model;
         }
 
@@ -331,6 +339,14 @@ namespace TraitSharp.SourceGenerator
                 }
             }
 
+            // Resolve trait inheritance for implementation-side models too
+            ResolveBaseTraits(traitTypeSymbol, traitModel, new HashSet<string>());
+            BuildAllProperties(traitModel);
+            if (traitModel.AllProperties.Count > 0 && traitModel.HasBaseTraits)
+            {
+                traitModel.Properties = new List<TraitProperty>(traitModel.AllProperties);
+            }
+
             return traitModel;
         }
 
@@ -475,6 +491,93 @@ namespace TraitSharp.SourceGenerator
                         trait.Location,
                         prop.Name, trait.Name));
                 }
+            }
+
+            // TE0010: ambiguous inherited fields (same name, different types across base traits)
+            if (trait.HasBaseTraits)
+            {
+                var propTypes = new Dictionary<string, (string TypeName, string SourceTrait)>();
+                foreach (var baseTrait in trait.BaseTraits)
+                {
+                    var baseProps = baseTrait.AllProperties.Count > 0
+                        ? baseTrait.AllProperties
+                        : baseTrait.Properties;
+                    foreach (var prop in baseProps)
+                    {
+                        if (propTypes.TryGetValue(prop.Name, out var existing))
+                        {
+                            if (existing.TypeName != prop.TypeName)
+                            {
+                                context.ReportDiagnostic(Diagnostic.Create(
+                                    DiagnosticDescriptors.TE0010_AmbiguousInheritedField,
+                                    trait.Location,
+                                    prop.Name, trait.Name,
+                                    existing.TypeName, existing.SourceTrait,
+                                    prop.TypeName, baseTrait.Name));
+                            }
+                        }
+                        else
+                        {
+                            propTypes[prop.Name] = (prop.TypeName, baseTrait.Name);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Recursively resolves base traits (interfaces annotated with [Trait]) for trait inheritance.
+        /// Uses a visited set to detect and break circular references.
+        /// </summary>
+        private static void ResolveBaseTraits(INamedTypeSymbol interfaceSymbol, TraitModel model, HashSet<string> visited)
+        {
+            if (!visited.Add(model.FullName))
+                return; // Circular — already visited
+
+            foreach (var baseInterface in interfaceSymbol.Interfaces)
+            {
+                var traitAttr = baseInterface.GetAttributes()
+                    .FirstOrDefault(a => a.AttributeClass?.Name == "TraitAttribute");
+                if (traitAttr == null) continue;
+
+                var baseModel = BuildTraitModelFromSymbol(baseInterface);
+                model.BaseTraits.Add(baseModel);
+            }
+        }
+
+        /// <summary>
+        /// Builds the merged AllProperties list by collecting inherited properties depth-first,
+        /// deduplicating by name (diamond inheritance), then appending own direct properties.
+        /// </summary>
+        private static void BuildAllProperties(TraitModel model)
+        {
+            if (!model.HasBaseTraits) return;
+
+            model.AllProperties.Clear();
+            var seen = new Dictionary<string, (TraitProperty Prop, string SourceTrait)>();
+
+            // First: inherited properties depth-first
+            foreach (var baseTrait in model.BaseTraits)
+            {
+                var baseProps = baseTrait.AllProperties.Count > 0
+                    ? baseTrait.AllProperties
+                    : baseTrait.Properties;
+                foreach (var prop in baseProps)
+                {
+                    if (seen.TryGetValue(prop.Name, out var existing))
+                        continue; // Diamond dedup: first definition wins
+                    seen[prop.Name] = (prop, baseTrait.Name);
+                    model.AllProperties.Add(prop);
+                }
+            }
+
+            // Then: own direct properties
+            foreach (var prop in model.Properties)
+            {
+                if (seen.TryGetValue(prop.Name, out var existing))
+                    continue; // Already inherited
+                seen[prop.Name] = (prop, model.Name);
+                model.AllProperties.Add(prop);
             }
         }
 
