@@ -1421,5 +1421,269 @@ namespace TestNs
             Assert.AreEqual("TE0010", descriptor!.Id);
             Assert.AreEqual(DiagnosticSeverity.Error, descriptor.DefaultSeverity);
         }
+
+        // ================================================================
+        // Phase 8: Method Trait Tests
+        // ================================================================
+
+        [TestMethod]
+        public void MethodTrait_VoidMethod_GeneratesContractDeclaration()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IResettable { void Reset(); }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IResettable.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract void Reset_Impl(in TSelf self)"),
+                "Expected contract to contain 'static abstract void Reset_Impl(in TSelf self)'");
+        }
+
+        [TestMethod]
+        public void MethodTrait_MethodWithParams_GeneratesContractDeclaration()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IScalable { float Scale(float factor); }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IScalable.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract float Scale_Impl(in TSelf self, float factor)"),
+                "Expected contract to contain Scale_Impl with correct params");
+        }
+
+        [TestMethod]
+        public void MethodTrait_ReturnsSelf_UseTSelfInContract()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface INormalizeable { INormalizeable Normalized(); }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("INormalizeable.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract TSelf Normalized_Impl(in TSelf self)"),
+                "Expected contract to use TSelf for Self-returning method");
+        }
+
+        [TestMethod]
+        public void MethodTrait_SelfParam_MappedToTSelf()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IAddable { IAddable Add(IAddable other); }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IAddable.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract TSelf Add_Impl(in TSelf self, TSelf other)"),
+                "Expected contract to map Self param to TSelf");
+        }
+
+        [TestMethod]
+        public void MethodTrait_GeneratesExtensionMethod()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IResettable { void Reset(); }
+}
+";
+            var result = RunGenerator(source);
+            var extSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IResettable.Extensions"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(extSource.Contains("public static void Reset<T>(this ref T self)"),
+                "Expected extension method 'Reset<T>(this ref T self)'");
+            Assert.IsTrue(extSource.Contains("T.Reset_Impl(in self)"),
+                "Expected forwarding call to T.Reset_Impl");
+        }
+
+        [TestMethod]
+        public void MethodTrait_GeneratesStaticDispatch()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IScalable { float Scale(float factor); }
+}
+";
+            var result = RunGenerator(source);
+            var staticSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IScalable.Static"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(staticSource.Contains("static float Scale<T>(in T self, float factor)"),
+                "Expected static dispatch method with correct signature");
+            Assert.IsTrue(staticSource.Contains("return T.Scale_Impl(in self, factor)"),
+                "Expected static dispatch to forward to T.Scale_Impl");
+        }
+
+        [TestMethod]
+        public void MethodTrait_GenericMethodParam_ReportsTE0012()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IBadTrait { void Process<U>(U value); }
+}
+";
+            var diagnostics = GetAllDiagnostics(source);
+            Assert.IsTrue(diagnostics.Any(d => d.Id == "TE0006"),
+                "Expected TE0006 for trait with invalid member (generic method added to InvalidMembers)");
+        }
+
+        [TestMethod]
+        public void MethodTrait_MixedPropertiesAndMethods()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IEntity
+    {
+        int Id { get; }
+        string Name { get; }
+        void Activate();
+        bool IsValid(int threshold);
+    }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IEntity.Contract"))
+                ?.GetText().ToString() ?? "";
+
+            // Properties
+            Assert.IsTrue(contractSource.Contains("static abstract int GetId_Impl(in TSelf self)"),
+                "Expected property accessor for Id");
+            Assert.IsTrue(contractSource.Contains("static abstract string GetName_Impl(in TSelf self)"),
+                "Expected property accessor for Name");
+
+            // Methods
+            Assert.IsTrue(contractSource.Contains("static abstract void Activate_Impl(in TSelf self)"),
+                "Expected method declaration for Activate");
+            Assert.IsTrue(contractSource.Contains("static abstract bool IsValid_Impl(in TSelf self, int threshold)"),
+                "Expected method declaration for IsValid");
+        }
+
+        [TestMethod]
+        public void MethodTrait_OverloadedMethods_GetDisambiguated()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IProcessor
+    {
+        void Process();
+        void Process(int value);
+    }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IProcessor.Contract"))
+                ?.GetText().ToString() ?? "";
+
+            Assert.IsTrue(contractSource.Contains("static abstract void Process_Impl(in TSelf self);"),
+                "Expected Process_Impl for first overload");
+            Assert.IsTrue(contractSource.Contains("static abstract void Process_1_Impl(in TSelf self, int value);"),
+                "Expected Process_1_Impl for second overload");
+        }
+
+        [TestMethod]
+        public void MethodTrait_RefParam_PreservesModifier()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface ISwappable { void Swap(ref int a, ref int b); }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("ISwappable.Contract"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(contractSource.Contains("static abstract void Swap_Impl(in TSelf self, ref int a, ref int b)"),
+                "Expected ref modifiers preserved in contract");
+
+            var extSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("ISwappable.Extensions"))
+                ?.GetText().ToString() ?? "";
+            Assert.IsTrue(extSource.Contains("ref int a, ref int b"),
+                "Expected ref modifiers in extension method");
+        }
+
+        [TestMethod]
+        public void MethodTrait_PropertiesOnly_NoMethodDeclarations()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; } int Y { get; } }
+}
+";
+            var result = RunGenerator(source);
+            var contractSource = result.GeneratedTrees
+                .FirstOrDefault(t => t.FilePath.Contains("IPoint.Contract"))
+                ?.GetText().ToString() ?? "";
+
+            // Should have property accessors but no _Impl method declarations
+            Assert.IsTrue(contractSource.Contains("GetX_Impl"), "Should have property accessor");
+            Assert.IsFalse(contractSource.Contains("_Impl(in TSelf self,"),
+                "Should not have method declarations with extra params (properties only)");
+        }
+
+        [TestMethod]
+        public void MethodTrait_TE0012_DiagnosticDescriptorExists()
+        {
+            var generatorAssembly = typeof(TraitGenerator).Assembly;
+            var descriptorsType = generatorAssembly.GetType(
+                "TraitSharp.SourceGenerator.Analyzers.DiagnosticDescriptors");
+            Assert.IsNotNull(descriptorsType, "DiagnosticDescriptors type should exist");
+
+            var field = descriptorsType!.GetField("TE0012_InvalidMethodSignature",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            Assert.IsNotNull(field, "TE0012_InvalidMethodSignature field should exist");
+
+            var descriptor = field!.GetValue(null) as DiagnosticDescriptor;
+            Assert.IsNotNull(descriptor, "TE0012 should be a non-null DiagnosticDescriptor");
+            Assert.AreEqual("TE0012", descriptor!.Id);
+            Assert.AreEqual(DiagnosticSeverity.Error, descriptor.DefaultSeverity);
+        }
     }
 }

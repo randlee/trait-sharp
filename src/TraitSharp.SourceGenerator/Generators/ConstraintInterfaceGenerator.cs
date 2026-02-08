@@ -75,6 +75,20 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine($"static abstract {prop.TypeName} Get{prop.Name}_Impl(in TSelf self);");
             }
 
+            // Method declarations
+            foreach (var method in trait.Methods)
+            {
+                var returnType = method.ReturnsSelf ? "TSelf" : method.ReturnType;
+                var paramList = "in TSelf self";
+                foreach (var param in method.Parameters)
+                {
+                    var typeName = param.IsSelf ? "TSelf" : param.TypeName;
+                    var modifier = string.IsNullOrEmpty(param.Modifier) ? "" : param.Modifier + " ";
+                    paramList += $", {modifier}{typeName} {param.Name}";
+                }
+                builder.AppendLine($"static abstract {returnType} {method.ImplMethodName}({paramList});");
+            }
+
             // AsLayout method
             builder.AppendLine($"static abstract ref readonly {trait.LayoutStructName} AsLayout(in TSelf self);");
 
