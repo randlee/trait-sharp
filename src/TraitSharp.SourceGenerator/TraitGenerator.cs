@@ -621,6 +621,7 @@ namespace TraitSharp.SourceGenerator
         /// <summary>
         /// Parses an IMethodSymbol into a TraitMethod model.
         /// Returns null if the method has generic type parameters (invalid for traits).
+        /// Also extracts default method body syntax when present (C# default interface methods).
         /// </summary>
         private static TraitMethod? ParseTraitMethod(IMethodSymbol methodSymbol, INamedTypeSymbol traitInterfaceSymbol)
         {
@@ -658,7 +659,45 @@ namespace TraitSharp.SourceGenerator
                 });
             }
 
+            // Extract default method body if present (C# default interface method)
+            ExtractDefaultBody(methodSymbol, method);
+
             return method;
+        }
+
+        /// <summary>
+        /// Extracts the default body syntax from a method symbol's declaring syntax references.
+        /// Sets HasDefaultBody and DefaultBodySyntax on the method model when found.
+        /// </summary>
+        private static void ExtractDefaultBody(IMethodSymbol methodSymbol, TraitMethod method)
+        {
+            foreach (var syntaxRef in methodSymbol.DeclaringSyntaxReferences)
+            {
+                var syntax = syntaxRef.GetSyntax();
+                if (syntax is MethodDeclarationSyntax methodSyntax)
+                {
+                    // Block body: string Describe() { return $"..."; }
+                    if (methodSyntax.Body != null)
+                    {
+                        method.HasDefaultBody = true;
+                        method.DefaultBodySyntax = methodSyntax.Body.ToFullString().Trim();
+                        return;
+                    }
+
+                    // Expression body: string Describe() => $"...";
+                    if (methodSyntax.ExpressionBody != null)
+                    {
+                        method.HasDefaultBody = true;
+                        // Wrap in block form for uniform handling: { return <expr>; }
+                        var expr = methodSyntax.ExpressionBody.Expression.ToFullString().Trim();
+                        if (method.ReturnsVoid)
+                            method.DefaultBodySyntax = $"{{ {expr}; }}";
+                        else
+                            method.DefaultBodySyntax = $"{{ return {expr}; }}";
+                        return;
+                    }
+                }
+            }
         }
 
         /// <summary>

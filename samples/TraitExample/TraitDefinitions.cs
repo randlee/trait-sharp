@@ -82,6 +82,94 @@ public partial struct LabeledItem
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 2b. Default method implementations (Phase 9)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// A trait demonstrating default method implementations.
+/// - Describe() has a default body → auto-emitted for types that don't override
+/// - Area() is required → each type MUST provide its own _Impl
+/// - Perimeter() has a default body → can be overridden selectively
+/// </summary>
+[Trait(GenerateLayout = true)]
+public partial interface IShape
+{
+    int Tag { get; }
+
+    /// <summary>Default method: returns a generic description using the Tag property.</summary>
+    string Describe() { return $"Shape(Tag={Tag})"; }
+
+    /// <summary>Required method: no default body, each implementer must provide Area_Impl.</summary>
+    float Area();
+
+    /// <summary>Default method: returns 0 by default, can be overridden.</summary>
+    float Perimeter() { return 0f; }
+}
+
+/// <summary>
+/// Rectangle: overrides Area (required) and Perimeter (default), keeps Describe default.
+/// </summary>
+[ImplementsTrait(typeof(IShape))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Rectangle
+{
+    public int Tag;
+    public float Width, Height;
+
+    // Required: must provide Area
+    public static float Area_Impl(in Rectangle self)
+        => self.Width * self.Height;
+
+    // Override default Perimeter
+    public static float Perimeter_Impl(in Rectangle self)
+        => 2f * (self.Width + self.Height);
+
+    // Describe: uses the default from IShape (not overridden)
+}
+
+/// <summary>
+/// Circle: overrides Area (required) and Describe (default), keeps Perimeter default.
+/// </summary>
+[ImplementsTrait(typeof(IShape))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Circle
+{
+    public int Tag;
+    public float Radius;
+
+    // Required: must provide Area
+    public static float Area_Impl(in Circle self)
+        => MathF.PI * self.Radius * self.Radius;
+
+    // Override default Describe
+    public static string Describe_Impl(in Circle self)
+        => $"Circle(r={self.Radius:F1}, Tag={self.Tag})";
+
+    // Perimeter: uses the default from IShape (returns 0f)
+}
+
+/// <summary>
+/// Square: overrides everything (Area required, Describe + Perimeter defaults).
+/// Corner case: no default methods used at all.
+/// </summary>
+[ImplementsTrait(typeof(IShape))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Square
+{
+    public int Tag;
+    public float Side;
+
+    public static float Area_Impl(in Square self)
+        => self.Side * self.Side;
+
+    public static string Describe_Impl(in Square self)
+        => $"Square(s={self.Side:F1}, Tag={self.Tag})";
+
+    public static float Perimeter_Impl(in Square self)
+        => 4f * self.Side;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. Generic algorithms using trait constraints
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -124,5 +212,15 @@ public static class Algorithms
         where T : unmanaged, ILabeledTrait<T>
     {
         return item.Describe();
+    }
+
+    /// <summary>
+    /// Generic algorithm using IShape trait: works with default and overridden methods.
+    /// Describe(), Area(), and Perimeter() all dispatch via the trait constraint.
+    /// </summary>
+    public static string ShapeSummary<T>(ref T shape)
+        where T : unmanaged, IShapeTrait<T>
+    {
+        return $"{shape.Describe()} → area={shape.Area():F2}, perim={shape.Perimeter():F2}";
     }
 }
