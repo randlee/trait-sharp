@@ -20,7 +20,7 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.AppendLine("/// <summary>");
             builder.AppendLine($"/// Extension methods for {trait.Name} trait.");
             builder.AppendLine("/// </summary>");
-            builder.AppendLine($"public static class {trait.Name}Extensions");
+            builder.AppendLine($"public static class {trait.ShortName}TraitExtensions");
             builder.OpenBrace();
 
             // AsLayout method - e.g., AsCoordinate

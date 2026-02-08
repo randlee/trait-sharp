@@ -323,7 +323,7 @@ namespace TestNs
             var result = RunGenerator(source);
             var allGeneratedCode = string.Join("\n",
                 result.GeneratedTrees.Select(t => t.GetText().ToString()));
-            Assert.IsFalse(allGeneratedCode.Contains("class IPointExtensions"),
+            Assert.IsFalse(allGeneratedCode.Contains("class PointTraitExtensions"),
                 "Expected no extension class when GenerateExtensions = false");
         }
 
@@ -391,7 +391,7 @@ namespace TestNs
             // Layout, extensions, and static methods should NOT be generated
             Assert.IsFalse(allGeneratedCode.Contains("struct PointLayout"),
                 "Expected no layout struct when GenerateLayout = false");
-            Assert.IsFalse(allGeneratedCode.Contains("class IPointExtensions"),
+            Assert.IsFalse(allGeneratedCode.Contains("class PointTraitExtensions"),
                 "Expected no extension class when GenerateExtensions = false");
 
             var staticTrees = result.GeneratedTrees.Where(t =>
@@ -1081,6 +1081,345 @@ namespace TestNs
                 "TE0008_CircularDependency descriptor should have ID 'TE0008'");
             Assert.AreEqual(DiagnosticSeverity.Error, descriptor.DefaultSeverity,
                 "TE0008_CircularDependency should be an Error severity diagnostic");
+        }
+
+        // ===== Phase 7: Trait Inheritance Tests =====
+
+        [TestMethod]
+        public void Inheritance_SingleBase_ProducesInheritedProperties()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ICircle : IPoint { double Radius { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var circleLayout = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("struct CircleLayout"));
+            Assert.IsNotNull(circleLayout, "CircleLayout should be generated");
+            var text = circleLayout!.GetText().ToString();
+            Assert.IsTrue(text.Contains("int X"), "CircleLayout should include inherited X");
+            Assert.IsTrue(text.Contains("int Y"), "CircleLayout should include inherited Y");
+            Assert.IsTrue(text.Contains("double Radius"), "CircleLayout should include own Radius");
+        }
+
+        [TestMethod]
+        public void Inheritance_MultiBase_MergesAllProperties()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ISize { int Width { get; set; } int Height { get; set; } }
+
+    [Trait]
+    interface IRectangle : IPoint, ISize { }
+}
+";
+            var result = RunGenerator(source);
+            var rectLayout = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("struct RectangleLayout"));
+            Assert.IsNotNull(rectLayout, "RectangleLayout should be generated");
+            var text = rectLayout!.GetText().ToString();
+            Assert.IsTrue(text.Contains("int X"), "Should include X from IPoint");
+            Assert.IsTrue(text.Contains("int Y"), "Should include Y from IPoint");
+            Assert.IsTrue(text.Contains("int Width"), "Should include Width from ISize");
+            Assert.IsTrue(text.Contains("int Height"), "Should include Height from ISize");
+        }
+
+        [TestMethod]
+        public void Inheritance_Diamond_DeduplicatesProperty()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IBase { int Id { get; set; } }
+
+    [Trait]
+    interface ILeft : IBase { int LeftVal { get; set; } }
+
+    [Trait]
+    interface IRight : IBase { int RightVal { get; set; } }
+
+    [Trait]
+    interface IDiamond : ILeft, IRight { }
+}
+";
+            var result = RunGenerator(source);
+            var diamondLayout = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("struct DiamondLayout"));
+            Assert.IsNotNull(diamondLayout, "DiamondLayout should be generated");
+            var text = diamondLayout!.GetText().ToString();
+            // Id should appear exactly once (diamond dedup)
+            var idCount = text.Split(new[] { "int Id" }, System.StringSplitOptions.None).Length - 1;
+            Assert.AreEqual(1, idCount, "Id should appear exactly once in DiamondLayout (diamond dedup)");
+            Assert.IsTrue(text.Contains("int LeftVal"), "Should include LeftVal");
+            Assert.IsTrue(text.Contains("int RightVal"), "Should include RightVal");
+        }
+
+        [TestMethod]
+        public void Inheritance_ThreeLevels_ProducesAllProperties()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IBase { int A { get; set; } }
+
+    [Trait]
+    interface IMid : IBase { int B { get; set; } }
+
+    [Trait]
+    interface ITop : IMid { int C { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var topLayout = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("struct TopLayout"));
+            Assert.IsNotNull(topLayout, "TopLayout should be generated");
+            var text = topLayout!.GetText().ToString();
+            Assert.IsTrue(text.Contains("int A"), "Should include A from IBase");
+            Assert.IsTrue(text.Contains("int B"), "Should include B from IMid");
+            Assert.IsTrue(text.Contains("int C"), "Should include own C");
+        }
+
+        [TestMethod]
+        public void Inheritance_BaseConstraint_GeneratedWithInheritance()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ICircle : IPoint { double Radius { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var contract = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("interface ICircleTrait<TSelf>"));
+            Assert.IsNotNull(contract, "ICircleTrait<TSelf> should be generated");
+            var text = contract!.GetText().ToString();
+            Assert.IsTrue(text.Contains("IPointTrait<TSelf>"),
+                "ICircleTrait should inherit from IPointTrait<TSelf>");
+        }
+
+        [TestMethod]
+        public void Inheritance_AmbiguousField_ProducesDiagnostic()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface ITraitA { int Value { get; set; } }
+
+    [Trait]
+    interface ITraitB { double Value { get; set; } }
+
+    [Trait]
+    interface IConflict : ITraitA, ITraitB { }
+}
+";
+            var diagnostics = GetAllDiagnostics(source);
+            Assert.IsTrue(diagnostics.Any(d => d.Id == "TE0010"),
+                "Should produce TE0010 for ambiguous inherited field 'Value' with different types");
+        }
+
+        [TestMethod]
+        public void Inheritance_EmptyDerived_InheritsAll()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface IPoint2 : IPoint { }
+}
+";
+            var result = RunGenerator(source);
+            var layout = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("struct Point2Layout"));
+            Assert.IsNotNull(layout, "Point2Layout should be generated");
+            var text = layout!.GetText().ToString();
+            Assert.IsTrue(text.Contains("int X"), "Empty derived should inherit X");
+            Assert.IsTrue(text.Contains("int Y"), "Empty derived should inherit Y");
+        }
+
+        [TestMethod]
+        public void Inheritance_ExtensionMethods_GeneratedForAllProperties()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ICircle : IPoint { double Radius { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var ext = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("CircleTraitExtensions"));
+            Assert.IsNotNull(ext, "CircleTraitExtensions should be generated");
+            var text = ext!.GetText().ToString();
+            Assert.IsTrue(text.Contains("GetX"), "Extensions should include inherited GetX");
+            Assert.IsTrue(text.Contains("GetY"), "Extensions should include inherited GetY");
+            Assert.IsTrue(text.Contains("GetRadius"), "Extensions should include own GetRadius");
+        }
+
+        [TestMethod]
+        public void Inheritance_StaticMethods_GeneratedForAllProperties()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ICircle : IPoint { double Radius { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var staticMethods = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("partial interface ICircle"));
+            Assert.IsNotNull(staticMethods, "ICircle static methods should be generated");
+            var text = staticMethods!.GetText().ToString();
+            Assert.IsTrue(text.Contains("GetX"), "Static methods should include inherited GetX");
+            Assert.IsTrue(text.Contains("GetRadius"), "Static methods should include own GetRadius");
+        }
+
+        [TestMethod]
+        public void Inheritance_SpanFactory_GeneratedForDerived()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ICircle : IPoint { double Radius { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var spanFactory = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("AsCircleSpan"));
+            Assert.IsNotNull(spanFactory, "SpanFactory for ICircle should be generated");
+        }
+
+        [TestMethod]
+        public void Inheritance_MultiBase_ConstraintInheritsAll()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface IPoint { int X { get; set; } int Y { get; set; } }
+
+    [Trait]
+    interface ISize { int Width { get; set; } int Height { get; set; } }
+
+    [Trait]
+    interface IRectangle : IPoint, ISize { }
+}
+";
+            var result = RunGenerator(source);
+            var contract = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("interface IRectangleTrait<TSelf>"));
+            Assert.IsNotNull(contract, "IRectangleTrait should be generated");
+            var text = contract!.GetText().ToString();
+            Assert.IsTrue(text.Contains("IPointTrait<TSelf>"),
+                "IRectangleTrait should inherit IPointTrait<TSelf>");
+            Assert.IsTrue(text.Contains("ISizeTrait<TSelf>"),
+                "IRectangleTrait should inherit ISizeTrait<TSelf>");
+        }
+
+        [TestMethod]
+        public void Inheritance_SameNameSameType_NoDiagnostic()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    [Trait]
+    interface ITraitA { int Value { get; set; } }
+
+    [Trait]
+    interface ITraitB { int Value { get; set; } }
+
+    [Trait]
+    interface IMerged : ITraitA, ITraitB { }
+}
+";
+            var diagnostics = GetAllDiagnostics(source);
+            Assert.IsFalse(diagnostics.Any(d => d.Id == "TE0010"),
+                "Same name + same type across base traits should NOT produce TE0010");
+        }
+
+        [TestMethod]
+        public void Inheritance_NonTraitBase_Ignored()
+        {
+            var source = @"
+using TraitSharp;
+namespace TestNs
+{
+    interface INotATrait { int Foo { get; set; } }
+
+    [Trait]
+    interface IMyTrait : INotATrait { int Bar { get; set; } }
+}
+";
+            var result = RunGenerator(source);
+            var layout = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("struct MyTraitLayout"));
+            Assert.IsNotNull(layout, "MyTraitLayout should be generated");
+            var text = layout!.GetText().ToString();
+            Assert.IsFalse(text.Contains("int Foo"),
+                "Non-[Trait] base interface properties should NOT be inherited");
+            Assert.IsTrue(text.Contains("int Bar"), "Own property should be present");
+        }
+
+        [TestMethod]
+        public void Inheritance_TE0010_DescriptorExists()
+        {
+            var generatorAssembly = typeof(TraitGenerator).Assembly;
+            var descriptorsType = generatorAssembly.GetType(
+                "TraitSharp.SourceGenerator.Analyzers.DiagnosticDescriptors");
+            Assert.IsNotNull(descriptorsType, "DiagnosticDescriptors type should exist");
+
+            var field = descriptorsType!.GetField("TE0010_AmbiguousInheritedField",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            Assert.IsNotNull(field, "TE0010_AmbiguousInheritedField field should exist");
+
+            var descriptor = field!.GetValue(null) as DiagnosticDescriptor;
+            Assert.IsNotNull(descriptor, "TE0010 should be a non-null DiagnosticDescriptor");
+            Assert.AreEqual("TE0010", descriptor!.Id);
+            Assert.AreEqual(DiagnosticSeverity.Error, descriptor.DefaultSeverity);
         }
     }
 }

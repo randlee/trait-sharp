@@ -49,7 +49,24 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.AppendLine("/// <summary>");
             builder.AppendLine($"/// Contract interface for {trait.Name} trait implementations.");
             builder.AppendLine("/// </summary>");
-            builder.AppendLine($"public interface {contractName}<TSelf> : ITrait<{trait.Name}, TSelf> where TSelf : unmanaged");
+
+            // Build base interface list
+            var baseInterfaces = $"ITrait<{trait.Name}, TSelf>";
+            if (trait.HasBaseTraits)
+            {
+                foreach (var baseTrait in trait.BaseTraits)
+                {
+                    var baseContractName = GetContractName(baseTrait);
+                    var baseNs = baseTrait.EffectiveNamespace;
+                    var ns = trait.EffectiveNamespace;
+                    // If same namespace, use short name; otherwise fully qualify
+                    if (baseNs == ns)
+                        baseInterfaces += $", {baseContractName}<TSelf>";
+                    else
+                        baseInterfaces += $", {baseNs}.{baseContractName}<TSelf>";
+                }
+            }
+            builder.AppendLine($"public interface {contractName}<TSelf> : {baseInterfaces} where TSelf : unmanaged");
             builder.OpenBrace();
 
             // Property accessors
