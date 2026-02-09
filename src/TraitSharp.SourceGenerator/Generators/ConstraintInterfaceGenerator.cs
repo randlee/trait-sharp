@@ -69,14 +69,18 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.AppendLine($"public interface {contractName}<TSelf> : {baseInterfaces} where TSelf : unmanaged");
             builder.OpenBrace();
 
-            // Property accessors
-            foreach (var prop in trait.Properties)
+            // Property accessors — only declare members NEW on this trait (not inherited).
+            // Inherited members come from base contract interfaces via C# interface inheritance.
+            // For derived traits, OwnProperties may be empty (trait adds no new properties) — that's correct.
+            var ownProps = trait.HasBaseTraits ? trait.OwnProperties : trait.Properties;
+            foreach (var prop in ownProps)
             {
                 builder.AppendLine($"static abstract {prop.TypeName} Get{prop.Name}_Impl(in TSelf self);");
             }
 
-            // Method declarations
-            foreach (var method in trait.Methods)
+            // Method declarations — own only (inherited come from base contracts)
+            var ownMethods = trait.HasBaseTraits ? trait.OwnMethods : trait.Methods;
+            foreach (var method in ownMethods)
             {
                 var returnType = method.ReturnsSelf ? "TSelf" : method.ReturnType;
                 var paramList = "in TSelf self";
@@ -89,11 +93,12 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine($"static abstract {returnType} {method.ImplMethodName}({paramList});");
             }
 
-            // AsLayout method
-            builder.AppendLine($"static abstract ref readonly {trait.LayoutStructName} AsLayout(in TSelf self);");
-
-            // TraitOffset property for TraitSpan support
-            builder.AppendLine("static abstract int TraitOffset { get; }");
+            // AsLayout + TraitOffset — each trait level declares its own.
+            // For derived traits, use 'new' to shadow the base contract's declarations
+            // since each level has a different layout struct return type.
+            var newPrefix = trait.HasBaseTraits ? "new " : "";
+            builder.AppendLine($"{newPrefix}static abstract ref readonly {trait.LayoutStructName} AsLayout(in TSelf self);");
+            builder.AppendLine($"{newPrefix}static abstract int TraitOffset {{ get; }}");
 
             builder.CloseBrace();
             builder.CloseBrace();

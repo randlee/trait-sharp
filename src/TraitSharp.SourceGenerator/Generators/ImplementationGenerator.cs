@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using TraitSharp.SourceGenerator.Models;
 using TraitSharp.SourceGenerator.Utilities;
@@ -79,6 +80,32 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine();
             }
 
+            // TraitOffset + AsLayout for the leaf trait
+            EmitTraitOffsetAndAsLayout(builder, trait, impl);
+
+            // TraitOffset + AsLayout for ALL ancestor traits in the hierarchy.
+            // When IQuadrupler : IDoubler : IValueProvider, the struct must satisfy
+            // all three contract interfaces' TraitOffset/AsLayout requirements.
+            var ancestors = CollectAncestorTraits(trait);
+            foreach (var ancestor in ancestors)
+            {
+                EmitTraitOffsetAndAsLayout(builder, ancestor, impl);
+            }
+
+            builder.CloseBrace();
+            builder.CloseBrace();
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Emits explicit interface implementation of TraitOffset and AsLayout for a single trait level.
+        /// </summary>
+        private static void EmitTraitOffsetAndAsLayout(CodeBuilder builder, TraitModel traitLevel, ImplementationModel impl)
+        {
+            var contractName = ConstraintInterfaceGenerator.GetContractName(traitLevel);
+            var fullContractName = $"{traitLevel.EffectiveNamespace}.{contractName}";
+
             // TraitOffset property - use explicit interface implementation to avoid
             // name collision when a struct implements multiple traits
             builder.AppendLine($"static int {fullContractName}<{impl.TypeName}>.TraitOffset => {impl.BaseOffset};");
@@ -87,22 +114,23 @@ namespace TraitSharp.SourceGenerator.Generators
             // Layout cast — use explicit interface implementation to avoid name collision
             // when a struct implements multiple traits (each returns a different layout type)
             builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-            builder.AppendLine($"static ref readonly {trait.EffectiveNamespace}.{trait.LayoutStructName} {fullContractName}<{impl.TypeName}>.AsLayout(in {impl.TypeName} self)");
+            builder.AppendLine($"static ref readonly {traitLevel.EffectiveNamespace}.{traitLevel.LayoutStructName} {fullContractName}<{impl.TypeName}>.AsLayout(in {impl.TypeName} self)");
             builder.OpenBrace();
 
             if (impl.BaseOffset == 0)
             {
                 // Trait fields start at beginning of struct — simple cast
-                var fieldsList = string.Join("; ", trait.Properties.Select(p => $"{p.TypeName} {p.Name}"));
+                var props = traitLevel.Properties.Count > 0 ? traitLevel.Properties : traitLevel.OwnProperties;
+                var fieldsList = string.Join("; ", props.Select(p => $"{p.TypeName} {p.Name}"));
                 builder.AppendLine($"// SAFETY: Generator verified {impl.TypeName} starts with {{{fieldsList}}}");
-                builder.AppendLine($"return ref global::System.Runtime.CompilerServices.Unsafe.As<{impl.TypeName}, {trait.EffectiveNamespace}.{trait.LayoutStructName}>(");
+                builder.AppendLine($"return ref global::System.Runtime.CompilerServices.Unsafe.As<{impl.TypeName}, {traitLevel.EffectiveNamespace}.{traitLevel.LayoutStructName}>(");
                 builder.AppendLine($"    ref global::System.Runtime.CompilerServices.Unsafe.AsRef(in self));");
             }
             else
             {
                 // Trait fields at non-zero offset — add byte offset before cast
-                builder.AppendLine($"// SAFETY: Generator verified {trait.Name} fields at byte offset {impl.BaseOffset}");
-                builder.AppendLine($"return ref global::System.Runtime.CompilerServices.Unsafe.As<byte, {trait.EffectiveNamespace}.{trait.LayoutStructName}>(");
+                builder.AppendLine($"// SAFETY: Generator verified {traitLevel.Name} fields at byte offset {impl.BaseOffset}");
+                builder.AppendLine($"return ref global::System.Runtime.CompilerServices.Unsafe.As<byte, {traitLevel.EffectiveNamespace}.{traitLevel.LayoutStructName}>(");
                 builder.AppendLine($"    ref global::System.Runtime.CompilerServices.Unsafe.AddByteOffset(");
                 builder.AppendLine($"        ref global::System.Runtime.CompilerServices.Unsafe.As<{impl.TypeName}, byte>(");
                 builder.AppendLine($"            ref global::System.Runtime.CompilerServices.Unsafe.AsRef(in self)),");
@@ -110,11 +138,35 @@ namespace TraitSharp.SourceGenerator.Generators
             }
 
             builder.CloseBrace();
+            builder.AppendLine();
+        }
 
-            builder.CloseBrace();
-            builder.CloseBrace();
+        /// <summary>
+        /// Collects all ancestor traits (breadth-first, deduplicated) from the trait hierarchy.
+        /// For IQuadrupler : IDoubler : IValueProvider, returns [IDoubler, IValueProvider].
+        /// </summary>
+        private static List<TraitModel> CollectAncestorTraits(TraitModel trait)
+        {
+            var ancestors = new List<TraitModel>();
+            var visited = new HashSet<string>();
+            var queue = new Queue<TraitModel>();
 
-            return builder.ToString();
+            foreach (var baseTrait in trait.BaseTraits)
+                queue.Enqueue(baseTrait);
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                if (!visited.Add(current.FullName))
+                    continue; // Diamond dedup
+
+                ancestors.Add(current);
+
+                foreach (var baseTrait in current.BaseTraits)
+                    queue.Enqueue(baseTrait);
+            }
+
+            return ancestors;
         }
 
         /// <summary>

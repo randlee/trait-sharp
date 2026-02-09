@@ -40,6 +40,20 @@ namespace TraitSharp.SourceGenerator.Models
         public List<TraitMethod> AllMethods { get; set; } = new List<TraitMethod>();
 
         /// <summary>
+        /// Properties declared directly on this trait (not inherited).
+        /// Preserved before Properties is overwritten with AllProperties.
+        /// Used by generators that should only emit own members (ConstraintInterface, StaticMethods, ExtensionMethods).
+        /// </summary>
+        public List<TraitProperty> OwnProperties { get; set; } = new List<TraitProperty>();
+
+        /// <summary>
+        /// Methods declared directly on this trait (not inherited).
+        /// Preserved before Methods is overwritten with AllMethods.
+        /// Used by generators that should only emit own members (ConstraintInterface, StaticMethods, ExtensionMethods).
+        /// </summary>
+        public List<TraitMethod> OwnMethods { get; set; } = new List<TraitMethod>();
+
+        /// <summary>
         /// True when this trait has at least one method (own or inherited).
         /// </summary>
         public bool HasMethods => Methods.Count > 0 || AllMethods.Count > 0;

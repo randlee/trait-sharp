@@ -152,6 +152,13 @@ namespace TraitSharp.SourceGenerator
             ResolveBaseTraits(interfaceSymbol, model, new HashSet<string>());
             BuildAllProperties(model);
             BuildAllMethods(model);
+
+            // Preserve own (non-inherited) members before overwriting with AllProperties/AllMethods.
+            // Generators like ConstraintInterface, StaticMethods, and ExtensionMethods need to
+            // only emit members declared directly on this trait, not inherited ones.
+            model.OwnProperties = new List<TraitProperty>(model.Properties);
+            model.OwnMethods = new List<TraitMethod>(model.Methods);
+
             if (model.AllProperties.Count > 0 && model.HasBaseTraits)
             {
                 model.Properties = new List<TraitProperty>(model.AllProperties);
@@ -372,6 +379,11 @@ namespace TraitSharp.SourceGenerator
             ResolveBaseTraits(traitTypeSymbol, traitModel, new HashSet<string>());
             BuildAllProperties(traitModel);
             BuildAllMethods(traitModel);
+
+            // Preserve own members before overwrite (same as trait-side pipeline)
+            traitModel.OwnProperties = new List<TraitProperty>(traitModel.Properties);
+            traitModel.OwnMethods = new List<TraitMethod>(traitModel.Methods);
+
             if (traitModel.AllProperties.Count > 0 && traitModel.HasBaseTraits)
             {
                 traitModel.Properties = new List<TraitProperty>(traitModel.AllProperties);

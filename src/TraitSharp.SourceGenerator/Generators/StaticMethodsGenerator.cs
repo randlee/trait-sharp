@@ -20,8 +20,10 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.AppendLine($"public partial interface {trait.Name}");
             builder.OpenBrace();
 
-            // Static property accessors
-            foreach (var prop in trait.Properties)
+            // Static property accessors — own only (inherited come from base trait's static methods)
+            // For derived traits, OwnProperties may be empty (trait adds no new properties) — that's correct.
+            var ownProps = trait.HasBaseTraits ? trait.OwnProperties : trait.Properties;
+            foreach (var prop in ownProps)
             {
                 builder.AppendLine("/// <summary>");
                 builder.AppendLine($"/// Static accessor for {prop.Name} across all implementers.");
@@ -35,8 +37,9 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine();
             }
 
-            // Static method dispatchers
-            foreach (var method in trait.Methods)
+            // Static method dispatchers — own only (inherited come from base trait's static methods)
+            var ownMethods = trait.HasBaseTraits ? trait.OwnMethods : trait.Methods;
+            foreach (var method in ownMethods)
             {
                 var returnType = method.ReturnsSelf ? "T" : method.ReturnType;
 
@@ -70,12 +73,14 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine();
             }
 
-            // Static AsLayout method
+            // Static AsLayout method — use 'new' for derived traits to shadow base trait's version
+            // (each trait level has a different layout struct return type)
+            var newPrefix = trait.HasBaseTraits ? "new " : "";
             builder.AppendLine("/// <summary>");
             builder.AppendLine("/// Zero-copy cast to layout struct.");
             builder.AppendLine("/// </summary>");
             builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-            builder.AppendLine($"static ref readonly {trait.LayoutStructName} AsLayout<T>(in T self)");
+            builder.AppendLine($"{newPrefix}static ref readonly {trait.LayoutStructName} AsLayout<T>(in T self)");
             builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
             builder.OpenBrace();
             builder.AppendLine("return ref T.AsLayout(in self);");

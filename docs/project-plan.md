@@ -4,6 +4,7 @@
 **Last Updated:** 2026-02-08
 **Branch:** develop
 **Current Version:** 0.1.0-alpha
+**Test Count:** 229 (83 generator + 146 runtime)
 
 ---
 
@@ -18,7 +19,7 @@
 | Phase 5 | NuGet packaging for all three packages | `7fd0e09` | ✅ Done |
 | Refactor | Rename TraitEmulation → TraitSharp | `ef8a12e` | ✅ Done |
 
-**Current capability:** Property-based traits with zero-copy layout casts, external type registration, strided span types, NuGet packaging. 42 tests passing.
+**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance, method traits with default implementations, parameterized defaults, chained dispatch, external type registration, strided span types, NuGet packaging. 229 tests passing.
 
 ---
 
@@ -333,11 +334,15 @@ partial struct AnnotatedItem {
 
 ---
 
-## Phase 8: Method Traits
+## Phase 8: Method Traits ✅ Done
+
+**Commit:** `1c5ff28` (merged via PR #5)
 
 **Goal:** Support trait interfaces with method members, enabling generic algorithms beyond pure data access.
 
 **Prerequisite:** Phase 7 complete (inheritance provides foundation for method inheritance)
+
+**Delivered:** Method parsing, contract interface generation with `static abstract` methods, extension method dispatch, implementation scaffolding with `{Method}_Impl` convention, method inheritance integration, overload disambiguation, Self-type resolution. Runtime integration tests verify dispatch for single-method, multi-method, parameterized methods, void returns, and generic algorithm scenarios.
 
 ### Design
 
@@ -476,11 +481,15 @@ The `Self` keyword in method signatures resolves to the implementing type:
 
 ---
 
-## Phase 9: Default Method Implementations
+## Phase 9: Default Method Implementations ✅ Done
+
+**Commit:** `7bda269` (merged via PR #6)
 
 **Goal:** Allow trait methods to have default bodies that are auto-generated for implementors that don't provide their own `{Method}_Impl`. Default methods access trait properties and call other trait methods via the same static abstract dispatch.
 
 **Prerequisite:** Phase 8 complete (method traits)
+
+**Delivered:** `HasDefaultBody` and `DefaultBodySyntax` extraction, `DefaultBodyRewriter` (Roslyn `CSharpSyntaxRewriter`) that transforms property accesses → `T.Get{P}_Impl(in self)` and method calls → `T.{M}_Impl(in self, ...)`, override detection via `HasUserOverride()`, expression-body and block-body support. Runtime integration tests verify default dispatch, selective override, all-override, default-only traits, expression-body defaults, and generic algorithm scenarios. Consumer sample updated with IShape/Rectangle/Circle/Square examples.
 
 ### Design
 
@@ -711,15 +720,131 @@ public partial struct Square { float Width, Height; ... }
 
 ---
 
+## Phase 10: Parameterized Defaults & Chained Dispatch ✅ Done
+
+**Commit:** `4a2b8f0` (merged via PR #7)
+
+**Goal:** Verify and test parameterized default methods (defaults with method parameters) and chained default dispatch (default method calling another default method or required method).
+
+**Delivered:** No generator code changes required — the Phase 9 `DefaultBodyRewriter` already handles parameter forwarding and chained calls correctly. Phase 10 is pure verification via comprehensive runtime integration tests (28 new tests).
+
+**Key test scenarios:**
+- `IScalable`: default `ScaledArea(float factor) => Area() * factor` — parameter + call to required method
+- `IChainable`: chain `Quadrupled() => Doubled() * 2` → `Doubled() => BaseValue() * 2` — default calling default calling required
+- `IFormattable`: defaults combining property access + single/multi parameters
+- `IComputable`: parameter forwarding through chained dispatch — `ComputeDouble(int x) => Compute(x) * 2`
+- Override detection: `ScalableRectOverride`, `ChainItemOverrideMiddle`, `FormattableItemOverride`
+- Generic algorithms: `ParameterizedDefaultAlgorithms` class with trait-constrained generics
+
+---
+
+## Phase 11: Inherited Method Dispatch & Cross-Assembly Traits
+
+**Goal:** Verify inherited method dispatch (trait inheriting methods from base traits) works end-to-end at runtime, and validate cross-assembly trait patterns (traits defined in one assembly, implemented in another).
+
+**Status:** In Progress
+
+**Prerequisite:** Phases 7–10 complete
+
+### Background
+
+The generator infrastructure for inherited methods already exists:
+- `BuildAllMethods` (TraitGenerator.cs) merges inherited methods depth-first with diamond deduplication
+- `trait.Methods` is replaced with `AllMethods` when base traits exist, so all downstream generators handle inherited methods automatically
+- However, **no runtime tests exist** for traits that inherit methods (all Phase 7 inheritance tests are property-only)
+
+For cross-assembly traits:
+- `RegisterTraitImplAttribute` enables assembly-level registration for external types
+- Current tests only cover property-based cross-assembly traits
+- No cross-assembly method trait tests exist
+
+### Sprint 11.1: Inherited Method Trait Types
+
+**Effort:** 1 day
+
+Define test types that combine inheritance + methods:
+
+| Type | Description |
+|------|-------------|
+| `IDescribable` | Base trait: `int Id { get; }` + method `string Describe()` |
+| `IDetailedDescribable : IDescribable` | Derived: adds `string Category { get; }` + method `string DetailedDescribe()` with default body calling `Describe()` |
+| `SimpleItem` | Implements `IDescribable` only |
+| `DetailedItem` | Implements `IDetailedDescribable` — inherits `Describe()` from base |
+| `INameable` | Base trait: `string Name()` method only (no properties except layout field) |
+| `IGreetable : INameable` | Derived: adds `string Greet()` default calling `Name()` |
+| `NamedEntity` | Implements `IGreetable` — tests inherited method + default calling inherited method |
+| `IValueProvider` | Base: `int Value { get; }` + `int GetValue()` required |
+| `IDoubler : IValueProvider` | Derived: adds `int DoubleValue()` default → `GetValue() * 2` |
+| `IDiamond : ILeftTrait, IRightTrait` | Diamond: both sides inherit `IValueProvider` — method deduplication |
+
+### Sprint 11.2: Inherited Method Runtime Tests
+
+**Effort:** 1 day
+
+| Test | Description |
+|------|-------------|
+| `InheritedMethod_BaseTraitDispatch` | Call `Describe()` through base trait constraint on `SimpleItem` |
+| `InheritedMethod_DerivedTraitIncludesBaseMethod` | Call inherited `Describe()` through derived constraint on `DetailedItem` |
+| `InheritedMethod_DefaultCallingInherited` | `DetailedDescribe()` default calls inherited `Describe()` |
+| `InheritedMethod_PureMethodInheritance` | `IGreetable` inherits `Name()` from `INameable` |
+| `InheritedMethod_DefaultCallingInheritedMethod` | `Greet()` default calls inherited `Name()` |
+| `InheritedMethod_GenericAlgorithm_BaseConstraint` | Generic `<T : IDescribableTrait<T>>` works with both base and derived types |
+| `InheritedMethod_GenericAlgorithm_DerivedConstraint` | Generic `<T : IDetailedDescribableTrait<T>>` dispatches inherited + own methods |
+| `InheritedMethod_DiamondDeduplication` | Diamond method inherited once, not duplicated |
+| `InheritedMethod_OverrideInheritedDefault` | Derived implementer overrides a default inherited from base |
+| `InheritedMethod_ChainedInheritance` | Three-level chain: `ITop : IMid : IBase` with methods at each level |
+
+### Sprint 11.3: Cross-Assembly Trait Verification
+
+**Effort:** 1 day
+
+Expand the existing `RegisterTraitImpl` + `ExternalPoint` pattern to cover method traits:
+
+| Type | Description |
+|------|-------------|
+| `IExternalLabeled` | Trait with property + method: `int Code { get; }` + `string Label()` |
+| `ExternalWidget` | Non-partial struct (simulates external type) |
+| `ExternalWidgetAdapter` | Static class providing `Label_Impl` for `ExternalWidget` |
+| Assembly-level registration | `[assembly: RegisterTraitImpl(typeof(IExternalLabeled), typeof(ExternalWidget))]` |
+
+| Test | Description |
+|------|-------------|
+| `CrossAssembly_ExternalType_MethodDispatch` | Method trait on external type dispatches correctly |
+| `CrossAssembly_ExternalType_GenericAlgorithm` | External type works in generic trait-constrained algorithm |
+| `CrossAssembly_ExternalType_DefaultMethod` | External type with default method uses default body |
+| `CrossAssembly_PropertyAndMethod_Combined` | External type with both property access and method dispatch |
+
+### Sprint 11.4: Consumer Sample Updates
+
+**Effort:** 0.5 days
+
+Add inherited method examples to `samples/TraitExample/`:
+- `IDescribable` → `IDetailedShape : IShape, IDescribable` demonstrating multi-inheritance with methods
+- Program.cs integration tests verifying inherited method dispatch at runtime
+
+### Phase 11 Summary
+
+| Sprint | Tests Added | Effort |
+|--------|------------|--------|
+| 11.1 Inherited method types | — | 1 day |
+| 11.2 Inherited method tests | ~10 | 1 day |
+| 11.3 Cross-assembly tests | ~4 | 1 day |
+| 11.4 Consumer sample | — | 0.5 days |
+| **Total** | **~14 new tests** | **~3.5 days** |
+
+---
+
 ## Timeline Overview
 
 ```
-Phase 6: Test Coverage Hardening       ✅ Done        (71 new tests)
-Phase 7: Trait Inheritance              ✅ Done        (14 new tests)
-Phase 8: Method Traits                  ✅ Done        (12 new tests)
-Phase 9: Default Implementations        ~6–8 days      (14+ new tests)
-                                        ───────────
-Total Phases 6–9:                       ~35–50 days    (111+ new tests)
+Phase 6: Test Coverage Hardening       ✅ Done   (3c93204)  71 new tests
+Phase 7: Trait Inheritance              ✅ Done   (5717da1)  14 new tests
+Phase 8: Method Traits                  ✅ Done   (1c5ff28)  12 new tests
+Phase 9: Default Implementations        ✅ Done   (7bda269)  14 new tests
+Phase 10: Parameterized Defaults        ✅ Done   (4a2b8f0)  28 new tests
+Phase 11: Inherited Methods + X-Asm     In Progress           ~14 new tests
+                                        ─────────
+Total Phases 6–11:                      229 passing → ~243    153+ tests
 ```
 
 ---
@@ -755,4 +880,4 @@ Total Phases 6–9:                       ~35–50 days    (111+ new tests)
 1. **Mutable methods:** Should traits support `ref Self` (mutable self)? Current design uses `in Self` (readonly).
 2. **Generic method parameters:** Can trait methods have their own generic parameters beyond `Self`?
 3. ~~**Partial default overrides:** Can an implementation override some default methods but inherit others?~~ → **Resolved in Phase 9:** Yes. Each default method is independently overridable.
-4. **Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?
+4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Addressed in Phase 11:** Validated via `RegisterTraitImplAttribute` with method traits. Same-project external type simulation covers the pattern; true cross-assembly requires a separate library project (future work).
