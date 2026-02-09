@@ -380,6 +380,26 @@ namespace TraitSharp.SourceGenerator
             BuildAllProperties(traitModel);
             BuildAllMethods(traitModel);
 
+            // Recover default body text from [TraitDefaultBody] metadata for cross-assembly traits.
+            // Must run after methods are built and BEFORE AllMethods is copied to Methods,
+            // so that inherited methods also get their default bodies recovered.
+            RecoverCrossAssemblyDefaultBodies(traitTypeSymbol, traitModel);
+
+            // Also recover for base traits that were resolved during ResolveBaseTraits
+            foreach (var baseTrait in traitModel.BaseTraits)
+            {
+                // Find the base trait's symbol to look up its metadata
+                foreach (var baseInterface in traitTypeSymbol.AllInterfaces)
+                {
+                    if (baseInterface.Name == baseTrait.Name &&
+                        baseInterface.ContainingNamespace.ToDisplayString() == baseTrait.Namespace)
+                    {
+                        RecoverCrossAssemblyDefaultBodies(baseInterface, baseTrait);
+                        break;
+                    }
+                }
+            }
+
             // Preserve own members before overwrite (same as trait-side pipeline)
             traitModel.OwnProperties = new List<TraitProperty>(traitModel.Properties);
             traitModel.OwnMethods = new List<TraitMethod>(traitModel.Methods);
@@ -392,6 +412,10 @@ namespace TraitSharp.SourceGenerator
             {
                 traitModel.Methods = new List<TraitMethod>(traitModel.AllMethods);
             }
+
+            // Final pass: recover default bodies for AllMethods that came from base traits
+            // after the merge from AllMethods → Methods
+            RecoverCrossAssemblyDefaultBodies(traitTypeSymbol, traitModel);
 
             return traitModel;
         }
@@ -462,6 +486,16 @@ namespace TraitSharp.SourceGenerator
                 {
                     var spanFactoryCode = TraitSpanFactoryGenerator.Generate(trait);
                     context.AddSource($"{trait.Name}.SpanFactory.g.cs", spanFactoryCode);
+                }
+
+                // Generate default body metadata for cross-assembly consumption.
+                // This emits [TraitDefaultBody] attributes on a companion class so that
+                // the consuming assembly's generator can recover default body syntax
+                // when DeclaringSyntaxReferences are unavailable for metadata-only symbols.
+                var metadataCode = DefaultBodyMetadataGenerator.Generate(trait);
+                if (metadataCode != null)
+                {
+                    context.AddSource($"{trait.Name}.DefaultBodyMetadata.g.cs", metadataCode);
                 }
             }
 
@@ -680,6 +714,8 @@ namespace TraitSharp.SourceGenerator
         /// <summary>
         /// Extracts the default body syntax from a method symbol's declaring syntax references.
         /// Sets HasDefaultBody and DefaultBodySyntax on the method model when found.
+        /// For cross-assembly symbols where syntax is unavailable, uses IsAbstract as a fallback
+        /// to detect default interface methods (body text is recovered separately from metadata).
         /// </summary>
         private static void ExtractDefaultBody(IMethodSymbol methodSymbol, TraitMethod method)
         {
@@ -710,6 +746,145 @@ namespace TraitSharp.SourceGenerator
                     }
                 }
             }
+
+            // Cross-assembly fallback: when DeclaringSyntaxReferences is empty (metadata-only symbol),
+            // use IsAbstract to detect default interface methods. Non-abstract interface methods
+            // have a default body. The actual body text will be recovered from [TraitDefaultBody]
+            // metadata attributes by RecoverCrossAssemblyDefaultBodies().
+            if (!method.HasDefaultBody &&
+                methodSymbol.DeclaringSyntaxReferences.Length == 0 &&
+                !methodSymbol.IsAbstract)
+            {
+                method.HasDefaultBody = true;
+                // DefaultBodySyntax remains null — will be populated from metadata attributes
+            }
+        }
+
+        /// <summary>
+        /// For cross-assembly traits, recovers default body syntax from [TraitDefaultBody] attributes
+        /// on the generated metadata class (e.g., ExternalShapeTraitDefaults).
+        /// This is needed because DeclaringSyntaxReferences are empty for metadata-only symbols,
+        /// so the default body text cannot be extracted from syntax during ExtractDefaultBody().
+        /// </summary>
+        private static void RecoverCrossAssemblyDefaultBodies(
+            INamedTypeSymbol traitTypeSymbol, TraitModel traitModel)
+        {
+            // Only needed when there are methods marked HasDefaultBody but with null syntax
+            var needsRecovery = false;
+            foreach (var m in traitModel.Methods)
+            {
+                if (m.HasDefaultBody && m.DefaultBodySyntax == null)
+                {
+                    needsRecovery = true;
+                    break;
+                }
+            }
+            if (!needsRecovery) return;
+
+            // Look for the metadata class in the trait's containing assembly.
+            // The generator emits {ShortName}TraitDefaults in the trait's namespace
+            // (or EffectiveNamespace). We check the same namespace as the trait.
+            var traitNs = traitTypeSymbol.ContainingNamespace;
+            var metadataClassName = traitModel.ShortName + "TraitDefaults";
+
+            // Search for the metadata class in the trait's namespace within the same assembly
+            var metadataType = FindTypeInNamespace(traitTypeSymbol.ContainingAssembly, traitNs, metadataClassName);
+            if (metadataType == null) return;
+
+            // Extract [TraitDefaultBody] attributes
+            var bodyLookup = new Dictionary<string, string>();
+            foreach (var attr in metadataType.GetAttributes())
+            {
+                if (attr.AttributeClass?.Name != "TraitDefaultBodyAttribute") continue;
+                if (attr.ConstructorArguments.Length < 2) continue;
+
+                var methodName = attr.ConstructorArguments[0].Value as string;
+                var bodySyntax = attr.ConstructorArguments[1].Value as string;
+                if (methodName != null && bodySyntax != null)
+                {
+                    bodyLookup[methodName] = bodySyntax;
+                }
+            }
+
+            // Apply recovered bodies to methods
+            foreach (var method in traitModel.Methods)
+            {
+                if (method.HasDefaultBody && method.DefaultBodySyntax == null)
+                {
+                    if (bodyLookup.TryGetValue(method.Name, out var body))
+                    {
+                        method.DefaultBodySyntax = body;
+                    }
+                }
+            }
+
+            // Also check base traits for unresolved defaults (inherited methods)
+            foreach (var baseTrait in traitModel.BaseTraits)
+            {
+                RecoverFromBaseTraitMetadata(baseTrait, traitModel, bodyLookup);
+            }
+        }
+
+        /// <summary>
+        /// Recursively recovers default body syntax for inherited methods from base trait metadata.
+        /// </summary>
+        private static void RecoverFromBaseTraitMetadata(
+            TraitModel baseTrait,
+            TraitModel derivedTrait,
+            Dictionary<string, string> derivedBodyLookup)
+        {
+            // Check if any methods in the derived trait's AllMethods/Methods still need bodies
+            foreach (var method in derivedTrait.Methods)
+            {
+                if (method.HasDefaultBody && method.DefaultBodySyntax == null &&
+                    !derivedBodyLookup.ContainsKey(method.Name))
+                {
+                    // Look for the body in the base trait's methods
+                    foreach (var baseMethod in baseTrait.Methods)
+                    {
+                        if (baseMethod.Name == method.Name && baseMethod.DefaultBodySyntax != null)
+                        {
+                            method.DefaultBodySyntax = baseMethod.DefaultBodySyntax;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Finds a type by name within a specific namespace of an assembly.
+        /// </summary>
+        private static INamedTypeSymbol? FindTypeInNamespace(
+            IAssemblySymbol assembly, INamespaceSymbol targetNamespace, string typeName)
+        {
+            // Try to find the type directly via the namespace path
+            var nsName = targetNamespace.ToDisplayString();
+            var candidate = FindTypeRecursive(assembly.GlobalNamespace, nsName, typeName);
+            return candidate;
+        }
+
+        /// <summary>
+        /// Recursively searches for a type in the assembly's namespace hierarchy.
+        /// </summary>
+        private static INamedTypeSymbol? FindTypeRecursive(
+            INamespaceSymbol ns, string targetNsName, string typeName)
+        {
+            if (ns.ToDisplayString() == targetNsName)
+            {
+                foreach (var member in ns.GetTypeMembers(typeName))
+                {
+                    return member;
+                }
+            }
+
+            foreach (var childNs in ns.GetNamespaceMembers())
+            {
+                var result = FindTypeRecursive(childNs, targetNsName, typeName);
+                if (result != null) return result;
+            }
+
+            return null;
         }
 
         /// <summary>
