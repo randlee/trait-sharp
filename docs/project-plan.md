@@ -1,10 +1,10 @@
 # TraitSharp Project Plan
 
 ## Status: Active
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-08
 **Branch:** develop
 **Current Version:** 0.1.0-alpha
-**Test Count:** 253 (83 generator + 170 runtime)
+**Test Count:** 275 (83 generator + 170 runtime + 22 cross-assembly)
 
 ---
 
@@ -19,7 +19,7 @@
 | Phase 5 | NuGet packaging for all three packages | `7fd0e09` | ✅ Done |
 | Refactor | Rename TraitEmulation → TraitSharp | `ef8a12e` | ✅ Done |
 
-**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance with method dispatch, method traits with default implementations, parameterized defaults, chained dispatch, inherited method dispatch through multi-level hierarchies, external type registration, strided span types, NuGet packaging. 253 tests passing.
+**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance with method dispatch, method traits with default implementations, parameterized defaults, chained dispatch, inherited method dispatch through multi-level hierarchies, cross-assembly trait support with default body metadata pipeline, external type registration, strided span types, NuGet packaging. 275 tests passing (83 generator + 170 runtime + 22 cross-assembly).
 
 ---
 
@@ -766,7 +766,7 @@ Consumer sample: `IAnimal`/`IPet` hierarchy with `Snake`, `Dog`, `Cat` — 42 in
 
 **Goal:** Validate cross-assembly trait patterns — traits defined in one assembly, implemented in another — with full method trait support. **Requires creating a separate project/assembly** since true cross-assembly testing cannot be done within a single project.
 
-**Status:** Not Started
+**Status:** ✅ Done — Commit `3fad92f` (PR #9)
 
 **Prerequisite:** Phase 11 complete
 
@@ -871,10 +871,9 @@ Phase 8: Method Traits                  ✅ Done   (1c5ff28)  12 new tests
 Phase 9: Default Implementations        ✅ Done   (7bda269)  14 new tests
 Phase 10: Parameterized Defaults        ✅ Done   (4a2b8f0)  28 new tests
 Phase 11: Inherited Method Dispatch     ✅ Done   (828230d)  24 new tests
-Phase 12: Cross-Assembly Traits         Not Started           ~10 new tests
+Phase 12: Cross-Assembly Traits         ✅ Done   (3fad92f)  22 new tests
                                         ─────────
-Total Phases 6–11:                      253 passing           163 tests added
-Phase 12 (planned):                     253 → ~263            ~10 new tests
+Total Phases 6–12:                      275 passing           185 tests added
 ```
 
 ---
@@ -910,4 +909,4 @@ Phase 12 (planned):                     253 → ~263            ~10 new tests
 1. **Mutable methods:** Should traits support `ref Self` (mutable self)? Current design uses `in Self` (readonly).
 2. **Generic method parameters:** Can trait methods have their own generic parameters beyond `Self`?
 3. ~~**Partial default overrides:** Can an implementation override some default methods but inherit others?~~ → **Resolved in Phase 9:** Yes. Each default method is independently overridable.
-4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Partially addressed in Phase 11:** Same-project external type simulation covers the pattern. **Phase 12** will create separate projects to validate true cross-assembly code paths (source generator running in consuming assembly, trait metadata discovery across compilation boundaries).
+4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Resolved in Phase 12:** Yes. Separate `TraitSharp.CrossAssembly.Traits` and `TraitSharp.CrossAssembly.Tests` projects validate true cross-assembly code paths. A `TraitDefaultBodyAttribute` metadata pipeline stores default body syntax in compiled assemblies, enabling the consuming assembly's source generator to emit default implementations. 22 cross-assembly tests pass covering property access, method dispatch, default method inheritance/override, three-level inheritance chains, layout casts, and generic algorithms across assembly boundaries.
