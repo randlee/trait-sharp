@@ -1,10 +1,10 @@
 # TraitSharp Project Plan
 
 ## Status: Active
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-09
 **Branch:** develop
 **Current Version:** 0.1.0-alpha
-**Test Count:** 229 (83 generator + 146 runtime)
+**Test Count:** 253 (83 generator + 170 runtime)
 
 ---
 
@@ -19,7 +19,7 @@
 | Phase 5 | NuGet packaging for all three packages | `7fd0e09` | ✅ Done |
 | Refactor | Rename TraitEmulation → TraitSharp | `ef8a12e` | ✅ Done |
 
-**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance, method traits with default implementations, parameterized defaults, chained dispatch, external type registration, strided span types, NuGet packaging. 229 tests passing.
+**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance with method dispatch, method traits with default implementations, parameterized defaults, chained dispatch, inherited method dispatch through multi-level hierarchies, external type registration, strided span types, NuGet packaging. 253 tests passing.
 
 ---
 
@@ -738,99 +738,127 @@ public partial struct Square { float Width, Height; ... }
 
 ---
 
-## Phase 11: Inherited Method Dispatch & Cross-Assembly Traits
+## Phase 11: Inherited Method Dispatch ✅ Done
 
-**Goal:** Verify inherited method dispatch (trait inheriting methods from base traits) works end-to-end at runtime, and validate cross-assembly trait patterns (traits defined in one assembly, implemented in another).
+**Commit:** `828230d` (merged via PR #8)
 
-**Status:** In Progress
+**Goal:** Verify inherited method dispatch (trait inheriting methods from base traits) works end-to-end at runtime.
 
 **Prerequisite:** Phases 7–10 complete
 
+**Delivered:**
+
+Generator fixes:
+- `TraitModel` now preserves `OwnProperties`/`OwnMethods` before overwrite with `AllProperties`/`AllMethods`
+- All four generators (`Constraint`, `Static`, `Extension`, `Implementation`) use `HasBaseTraits`-based selection to emit only own members for derived traits
+- Derived contract interfaces use `new static abstract` for `AsLayout`/`TraitOffset` to shadow base versions
+- `ImplementationGenerator` emits explicit interface implementations for all ancestor traits (BFS with diamond dedup)
+
+Test types: `IDescribable→IDetailedDescribable`, `INameable→IGreetable`, `IValueProvider→IDoubler→IQuadrupler`, `ITaggable→IPriorityTaggable` with implementing structs and override variants.
+
+24 new runtime tests covering: direct dispatch, inherited method call, default calling inherited, override of default, three-level chain (`IValueProvider→IDoubler→IQuadrupler`), override of middle default, inherited default passthrough, layout cast verification through hierarchy, generic algorithm dispatch.
+
+Consumer sample: `IAnimal`/`IPet` hierarchy with `Snake`, `Dog`, `Cat` — 42 integration tests all passing.
+
+---
+
+## Phase 12: Cross-Assembly Trait Support
+
+**Goal:** Validate cross-assembly trait patterns — traits defined in one assembly, implemented in another — with full method trait support. **Requires creating a separate project/assembly** since true cross-assembly testing cannot be done within a single project.
+
+**Status:** Not Started
+
+**Prerequisite:** Phase 11 complete
+
 ### Background
 
-The generator infrastructure for inherited methods already exists:
-- `BuildAllMethods` (TraitGenerator.cs) merges inherited methods depth-first with diamond deduplication
-- `trait.Methods` is replaced with `AllMethods` when base traits exist, so all downstream generators handle inherited methods automatically
-- However, **no runtime tests exist** for traits that inherit methods (all Phase 7 inheritance tests are property-only)
+The `RegisterTraitImplAttribute` provides assembly-level registration for external types, enabling cross-assembly trait implementation. Current same-project tests simulate external types by using non-partial structs + adapter classes, but this doesn't exercise the actual cross-assembly code path:
+- Source generator runs in the **consuming** assembly, not the defining assembly
+- Trait metadata must be discoverable via `INamedTypeSymbol` across compilation boundaries
+- Layout compatibility must be validated when trait and implementation are in different assemblies
 
-For cross-assembly traits:
-- `RegisterTraitImplAttribute` enables assembly-level registration for external types
-- Current tests only cover property-based cross-assembly traits
-- No cross-assembly method trait tests exist
-
-### Sprint 11.1: Inherited Method Trait Types
+### Sprint 12.1: Separate Library Project Setup
 
 **Effort:** 1 day
 
-Define test types that combine inheritance + methods:
+Create a new project in the solution:
 
-| Type | Description |
-|------|-------------|
-| `IDescribable` | Base trait: `int Id { get; }` + method `string Describe()` |
-| `IDetailedDescribable : IDescribable` | Derived: adds `string Category { get; }` + method `string DetailedDescribe()` with default body calling `Describe()` |
-| `SimpleItem` | Implements `IDescribable` only |
-| `DetailedItem` | Implements `IDetailedDescribable` — inherits `Describe()` from base |
-| `INameable` | Base trait: `string Name()` method only (no properties except layout field) |
-| `IGreetable : INameable` | Derived: adds `string Greet()` default calling `Name()` |
-| `NamedEntity` | Implements `IGreetable` — tests inherited method + default calling inherited method |
-| `IValueProvider` | Base: `int Value { get; }` + `int GetValue()` required |
-| `IDoubler : IValueProvider` | Derived: adds `int DoubleValue()` default → `GetValue() * 2` |
-| `IDiamond : ILeftTrait, IRightTrait` | Diamond: both sides inherit `IValueProvider` — method deduplication |
+| Project | Description |
+|---------|-------------|
+| `TraitSharp.CrossAssembly.Traits` | Class library defining trait interfaces only (references `TraitSharp`) |
+| `TraitSharp.CrossAssembly.Implementations` | Class library implementing traits from the Traits project (references Traits + `TraitSharp.SourceGenerator`) |
+| `TraitSharp.CrossAssembly.Tests` | Test project consuming implementations from a different assembly |
 
-### Sprint 11.2: Inherited Method Runtime Tests
+**Project dependency chain:**
+```
+TraitSharp.CrossAssembly.Traits        → TraitSharp (attributes only, no generator)
+TraitSharp.CrossAssembly.Implementations → Traits + TraitSharp.SourceGenerator
+TraitSharp.CrossAssembly.Tests          → Implementations + Traits
+```
 
-**Effort:** 1 day
+### Sprint 12.2: Cross-Assembly Trait Definitions
 
-| Test | Description |
-|------|-------------|
-| `InheritedMethod_BaseTraitDispatch` | Call `Describe()` through base trait constraint on `SimpleItem` |
-| `InheritedMethod_DerivedTraitIncludesBaseMethod` | Call inherited `Describe()` through derived constraint on `DetailedItem` |
-| `InheritedMethod_DefaultCallingInherited` | `DetailedDescribe()` default calls inherited `Describe()` |
-| `InheritedMethod_PureMethodInheritance` | `IGreetable` inherits `Name()` from `INameable` |
-| `InheritedMethod_DefaultCallingInheritedMethod` | `Greet()` default calls inherited `Name()` |
-| `InheritedMethod_GenericAlgorithm_BaseConstraint` | Generic `<T : IDescribableTrait<T>>` works with both base and derived types |
-| `InheritedMethod_GenericAlgorithm_DerivedConstraint` | Generic `<T : IDetailedDescribableTrait<T>>` dispatches inherited + own methods |
-| `InheritedMethod_DiamondDeduplication` | Diamond method inherited once, not duplicated |
-| `InheritedMethod_OverrideInheritedDefault` | Derived implementer overrides a default inherited from base |
-| `InheritedMethod_ChainedInheritance` | Three-level chain: `ITop : IMid : IBase` with methods at each level |
+**Effort:** 0.5 days
 
-### Sprint 11.3: Cross-Assembly Trait Verification
-
-**Effort:** 1 day
-
-Expand the existing `RegisterTraitImpl` + `ExternalPoint` pattern to cover method traits:
+Define traits in the Traits library:
 
 | Type | Description |
 |------|-------------|
 | `IExternalLabeled` | Trait with property + method: `int Code { get; }` + `string Label()` |
-| `ExternalWidget` | Non-partial struct (simulates external type) |
-| `ExternalWidgetAdapter` | Static class providing `Label_Impl` for `ExternalWidget` |
-| Assembly-level registration | `[assembly: RegisterTraitImpl(typeof(IExternalLabeled), typeof(ExternalWidget))]` |
+| `IExternalShape` | Trait with property + default method: `float Width { get; }` + `float Height { get; }` + `float Area()` required + `float Perimeter() => 2 * (Width + Height)` default |
+| `IExternalBase` | Base trait for inheritance: `int Id { get; }` + `string Describe()` |
+| `IExternalDerived : IExternalBase` | Derived trait: `string Category { get; }` + `string DetailedDescribe()` default calling `Describe()` |
+
+### Sprint 12.3: Cross-Assembly Implementations
+
+**Effort:** 1 day
+
+Implement traits in the Implementations library:
+
+| Type | Description |
+|------|----|
+| `Widget` | Implements `IExternalLabeled` — property + method |
+| `ExternalRect` | Implements `IExternalShape` — required Area + inherited default Perimeter |
+| `ExternalCircle` | Implements `IExternalShape` — overrides Perimeter default |
+| `BasicItem` | Implements `IExternalBase` only |
+| `DetailedWidget` | Implements `IExternalDerived` — inherited method dispatch cross-assembly |
+| `ExternalPoint` | Non-partial struct + adapter class using `RegisterTraitImplAttribute` |
+
+### Sprint 12.4: Cross-Assembly Runtime Tests
+
+**Effort:** 1.5 days
 
 | Test | Description |
 |------|-------------|
-| `CrossAssembly_ExternalType_MethodDispatch` | Method trait on external type dispatches correctly |
-| `CrossAssembly_ExternalType_GenericAlgorithm` | External type works in generic trait-constrained algorithm |
-| `CrossAssembly_ExternalType_DefaultMethod` | External type with default method uses default body |
-| `CrossAssembly_PropertyAndMethod_Combined` | External type with both property access and method dispatch |
+| `CrossAssembly_PropertyAccess` | Access trait properties defined in separate assembly |
+| `CrossAssembly_MethodDispatch` | Method trait defined externally dispatches correctly |
+| `CrossAssembly_DefaultMethod_Inherited` | Default method from external trait auto-generated in implementation assembly |
+| `CrossAssembly_DefaultMethod_Override` | Override default from external trait |
+| `CrossAssembly_InheritedMethod_BaseInExternal` | Base trait in external assembly, derived + impl in consuming assembly |
+| `CrossAssembly_InheritedMethod_FullChain` | Both base and derived traits in external assembly, impl in consuming assembly |
+| `CrossAssembly_GenericAlgorithm` | Generic algorithm in test project using trait constraint from external assembly |
+| `CrossAssembly_RegisterTraitImpl_ExternalType` | `RegisterTraitImplAttribute` on external struct with method trait |
+| `CrossAssembly_LayoutCast_Verification` | Zero-copy layout cast works across assembly boundary |
+| `CrossAssembly_SpanFactory` | `TraitSpan` factory works with cross-assembly trait |
 
-### Sprint 11.4: Consumer Sample Updates
+### Sprint 12.5: CI & Solution Integration
 
 **Effort:** 0.5 days
 
-Add inherited method examples to `samples/TraitExample/`:
-- `IDescribable` → `IDetailedShape : IShape, IDescribable` demonstrating multi-inheritance with methods
-- Program.cs integration tests verifying inherited method dispatch at runtime
+- Add new projects to `TraitSharp.sln`
+- Update CI workflow to build/test cross-assembly projects
+- Validate NuGet packaging still works (trait library as NuGet → consumer project)
 
-### Phase 11 Summary
+### Phase 12 Summary
 
 | Sprint | Tests Added | Effort |
 |--------|------------|--------|
-| 11.1 Inherited method types | — | 1 day |
-| 11.2 Inherited method tests | ~10 | 1 day |
-| 11.3 Cross-assembly tests | ~4 | 1 day |
-| 11.4 Consumer sample | — | 0.5 days |
-| **Total** | **~14 new tests** | **~3.5 days** |
+| 12.1 Project setup | — | 1 day |
+| 12.2 Trait definitions | — | 0.5 days |
+| 12.3 Implementations | — | 1 day |
+| 12.4 Runtime tests | ~10 | 1.5 days |
+| 12.5 CI integration | — | 0.5 days |
+| **Total** | **~10 new tests** | **~4.5 days** |
 
 ---
 
@@ -842,9 +870,11 @@ Phase 7: Trait Inheritance              ✅ Done   (5717da1)  14 new tests
 Phase 8: Method Traits                  ✅ Done   (1c5ff28)  12 new tests
 Phase 9: Default Implementations        ✅ Done   (7bda269)  14 new tests
 Phase 10: Parameterized Defaults        ✅ Done   (4a2b8f0)  28 new tests
-Phase 11: Inherited Methods + X-Asm     In Progress           ~14 new tests
+Phase 11: Inherited Method Dispatch     ✅ Done   (828230d)  24 new tests
+Phase 12: Cross-Assembly Traits         Not Started           ~10 new tests
                                         ─────────
-Total Phases 6–11:                      229 passing → ~243    153+ tests
+Total Phases 6–11:                      253 passing           163 tests added
+Phase 12 (planned):                     253 → ~263            ~10 new tests
 ```
 
 ---
@@ -880,4 +910,4 @@ Total Phases 6–11:                      229 passing → ~243    153+ tests
 1. **Mutable methods:** Should traits support `ref Self` (mutable self)? Current design uses `in Self` (readonly).
 2. **Generic method parameters:** Can trait methods have their own generic parameters beyond `Self`?
 3. ~~**Partial default overrides:** Can an implementation override some default methods but inherit others?~~ → **Resolved in Phase 9:** Yes. Each default method is independently overridable.
-4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Addressed in Phase 11:** Validated via `RegisterTraitImplAttribute` with method traits. Same-project external type simulation covers the pattern; true cross-assembly requires a separate library project (future work).
+4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Partially addressed in Phase 11:** Same-project external type simulation covers the pattern. **Phase 12** will create separate projects to validate true cross-assembly code paths (source generator running in consuming assembly, trait metadata discovery across compilation boundaries).
