@@ -170,6 +170,77 @@ public partial struct Square
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 2c. Trait inheritance with method dispatch (Phase 11)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Base trait: defines a property and a required method.
+/// </summary>
+[Trait(GenerateLayout = true)]
+public partial interface IAnimal
+{
+    int Legs { get; }
+
+    /// <summary>Required: return the animal's sound.</summary>
+    string Sound();
+}
+
+/// <summary>
+/// Derived trait: inherits Sound() from IAnimal, adds a default Introduce() method.
+/// Demonstrates: default body calling an inherited method.
+/// </summary>
+[Trait(GenerateLayout = true)]
+public partial interface IPet : IAnimal
+{
+    int Affection { get; }
+
+    /// <summary>Default: builds introduction using inherited Sound().</summary>
+    string Introduce() => $"I have {Legs} legs, go '{Sound()}', and my affection is {Affection}";
+}
+
+/// <summary>
+/// Implements base IAnimal only — simple case.
+/// </summary>
+[ImplementsTrait(typeof(IAnimal))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Snake
+{
+    public int Legs; // always 0
+
+    public static string Sound_Impl(in Snake self) => "hiss";
+}
+
+/// <summary>
+/// Implements derived IPet — provides Sound_Impl (inherited required method),
+/// uses the default Introduce().
+/// </summary>
+[ImplementsTrait(typeof(IPet))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Dog
+{
+    public int Legs;
+    public int Affection;
+
+    public static string Sound_Impl(in Dog self) => "woof";
+}
+
+/// <summary>
+/// Implements derived IPet and overrides the default Introduce().
+/// </summary>
+[ImplementsTrait(typeof(IPet))]
+[StructLayout(LayoutKind.Sequential)]
+public partial struct Cat
+{
+    public int Legs;
+    public int Affection;
+
+    public static string Sound_Impl(in Cat self) => "meow";
+
+    public static string Introduce_Impl(in Cat self)
+        => $"I'm a cat. I go '{Sound_Impl(in self)}' and my affection is... complicated ({self.Affection})";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. Generic algorithms using trait constraints
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -222,5 +293,25 @@ public static class Algorithms
         where T : unmanaged, IShapeTrait<T>
     {
         return $"{shape.Describe()} → area={shape.Area():F2}, perim={shape.Perimeter():F2}";
+    }
+
+    /// <summary>
+    /// Generic algorithm using IAnimal base constraint.
+    /// Works with any animal, whether it's a base IAnimal or derived IPet.
+    /// </summary>
+    public static string AnimalInfo<T>(ref T animal)
+        where T : unmanaged, IAnimalTrait<T>
+    {
+        return $"{animal.Sound()} ({animal.GetLegs()} legs)";
+    }
+
+    /// <summary>
+    /// Generic algorithm using IPet derived constraint.
+    /// Can call both inherited Sound() and own Introduce().
+    /// </summary>
+    public static string PetProfile<T>(ref T pet)
+        where T : unmanaged, IPetTrait<T>
+    {
+        return $"Sound: {pet.Sound()} | Intro: {pet.Introduce()}";
     }
 }

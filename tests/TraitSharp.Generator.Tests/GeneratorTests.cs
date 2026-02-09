@@ -1265,7 +1265,7 @@ namespace TestNs
         }
 
         [TestMethod]
-        public void Inheritance_ExtensionMethods_GeneratedForAllProperties()
+        public void Inheritance_ExtensionMethods_GeneratedForOwnPropertiesOnly()
         {
             var source = @"
 using TraitSharp;
@@ -1279,17 +1279,27 @@ namespace TestNs
 }
 ";
             var result = RunGenerator(source);
+
+            // Derived trait's extension class should only contain OWN members
             var ext = result.GeneratedTrees
                 .FirstOrDefault(t => t.GetText().ToString().Contains("CircleTraitExtensions"));
             Assert.IsNotNull(ext, "CircleTraitExtensions should be generated");
             var text = ext!.GetText().ToString();
-            Assert.IsTrue(text.Contains("GetX"), "Extensions should include inherited GetX");
-            Assert.IsTrue(text.Contains("GetY"), "Extensions should include inherited GetY");
+            Assert.IsFalse(text.Contains("GetX"), "Extensions should NOT include inherited GetX (comes from PointTraitExtensions)");
+            Assert.IsFalse(text.Contains("GetY"), "Extensions should NOT include inherited GetY (comes from PointTraitExtensions)");
             Assert.IsTrue(text.Contains("GetRadius"), "Extensions should include own GetRadius");
+
+            // Base trait's extension class should contain its own members
+            var baseExt = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("PointTraitExtensions"));
+            Assert.IsNotNull(baseExt, "PointTraitExtensions should be generated");
+            var baseText = baseExt!.GetText().ToString();
+            Assert.IsTrue(baseText.Contains("GetX"), "Base extensions should include GetX");
+            Assert.IsTrue(baseText.Contains("GetY"), "Base extensions should include GetY");
         }
 
         [TestMethod]
-        public void Inheritance_StaticMethods_GeneratedForAllProperties()
+        public void Inheritance_StaticMethods_GeneratedForOwnPropertiesOnly()
         {
             var source = @"
 using TraitSharp;
@@ -1303,12 +1313,23 @@ namespace TestNs
 }
 ";
             var result = RunGenerator(source);
+
+            // Derived trait's static methods should only contain OWN members
             var staticMethods = result.GeneratedTrees
                 .FirstOrDefault(t => t.GetText().ToString().Contains("partial interface ICircle"));
             Assert.IsNotNull(staticMethods, "ICircle static methods should be generated");
             var text = staticMethods!.GetText().ToString();
-            Assert.IsTrue(text.Contains("GetX"), "Static methods should include inherited GetX");
+            Assert.IsFalse(text.Contains("GetX"), "Static methods should NOT include inherited GetX (comes from IPoint static methods)");
+            Assert.IsFalse(text.Contains("GetY"), "Static methods should NOT include inherited GetY (comes from IPoint static methods)");
             Assert.IsTrue(text.Contains("GetRadius"), "Static methods should include own GetRadius");
+
+            // Base trait's static methods should contain its own members
+            var baseStaticMethods = result.GeneratedTrees
+                .FirstOrDefault(t => t.GetText().ToString().Contains("partial interface IPoint"));
+            Assert.IsNotNull(baseStaticMethods, "IPoint static methods should be generated");
+            var baseText = baseStaticMethods!.GetText().ToString();
+            Assert.IsTrue(baseText.Contains("GetX"), "Base static methods should include GetX");
+            Assert.IsTrue(baseText.Contains("GetY"), "Base static methods should include GetY");
         }
 
         [TestMethod]

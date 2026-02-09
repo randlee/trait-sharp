@@ -186,6 +186,66 @@ Assert(rect2Desc.Contains("Tag=99"), "Default Describe should reflect Tag value"
 
 Console.WriteLine();
 
+// --- Trait inheritance with method dispatch (Phase 11) ---
+Console.WriteLine("--- Trait inheritance: IAnimal / IPet ---");
+
+// Base trait: Snake implements IAnimal only
+var snake = new Snake { Legs = 0 };
+string snakeSound = snake.Sound();
+Console.WriteLine($"Snake.Sound(): {snakeSound}");
+Assert(snakeSound == "hiss", "Snake should hiss");
+
+// Derived trait: Dog implements IPet, uses default Introduce()
+var dog = new Dog { Legs = 4, Affection = 100 };
+string dogSound = dog.Sound();
+string dogIntro = dog.Introduce();
+Console.WriteLine($"Dog.Sound() [inherited]: {dogSound}");
+Console.WriteLine($"Dog.Introduce() [default]: {dogIntro}");
+Assert(dogSound == "woof", "Dog should woof");
+Assert(dogIntro.Contains("woof"), "Dog intro should mention woof from inherited Sound()");
+Assert(dogIntro.Contains("4 legs"), "Dog intro should mention 4 legs");
+Assert(dogIntro.Contains("100"), "Dog intro should mention affection=100");
+
+// Derived trait: Cat implements IPet, overrides Introduce()
+var cat = new Cat { Legs = 4, Affection = 50 };
+string catSound = cat.Sound();
+string catIntro = cat.Introduce();
+Console.WriteLine($"Cat.Sound() [inherited]: {catSound}");
+Console.WriteLine($"Cat.Introduce() [override]: {catIntro}");
+Assert(catSound == "meow", "Cat should meow");
+Assert(catIntro.Contains("cat"), "Cat override intro should identify as cat");
+Assert(catIntro.Contains("meow"), "Cat override intro should mention meow");
+
+// Generic algorithms with inherited traits
+Console.WriteLine();
+Console.WriteLine("--- Generic algorithms: AnimalInfo + PetProfile ---");
+string snakeInfo = Algorithms.AnimalInfo(ref snake);
+string dogInfo = Algorithms.AnimalInfo(ref dog);
+string catInfo = Algorithms.AnimalInfo(ref cat);
+Console.WriteLine($"  Snake: {snakeInfo}");
+Console.WriteLine($"  Dog:   {dogInfo}");
+Console.WriteLine($"  Cat:   {catInfo}");
+Assert(snakeInfo == "hiss (0 legs)", "Snake info should match");
+Assert(dogInfo == "woof (4 legs)", "Dog info should match");
+
+string dogProfile = Algorithms.PetProfile(ref dog);
+string catProfile = Algorithms.PetProfile(ref cat);
+Console.WriteLine($"  Dog profile: {dogProfile}");
+Console.WriteLine($"  Cat profile: {catProfile}");
+Assert(dogProfile.Contains("woof"), "Dog profile should mention woof");
+Assert(catProfile.Contains("cat"), "Cat profile should use override");
+
+// Layout casts through inheritance
+ref readonly var dogAsAnimal = ref dog.AsAnimal();
+Console.WriteLine($"  Dog.AsAnimal().Legs = {dogAsAnimal.Legs}");
+Assert(dogAsAnimal.Legs == 4, "Dog as IAnimal layout should show 4 legs");
+
+ref readonly var dogAsPet = ref dog.AsPet();
+Console.WriteLine($"  Dog.AsPet().Affection = {dogAsPet.Affection}");
+Assert(dogAsPet.Affection == 100, "Dog as IPet layout should show affection=100");
+
+Console.WriteLine();
+
 // --- Zero allocation verification ---
 Console.WriteLine("--- Zero allocation verification ---");
 long before = GC.GetAllocatedBytesForCurrentThread();

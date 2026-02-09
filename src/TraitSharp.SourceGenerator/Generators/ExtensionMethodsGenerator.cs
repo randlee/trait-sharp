@@ -38,8 +38,10 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.CloseBrace();
             builder.AppendLine();
 
-            // Individual property accessors
-            foreach (var prop in trait.Properties)
+            // Individual property accessors — own only (inherited come from base trait's extensions)
+            // For derived traits, OwnProperties may be empty (trait adds no new properties) — that's correct.
+            var ownProps = trait.HasBaseTraits ? trait.OwnProperties : trait.Properties;
+            foreach (var prop in ownProps)
             {
                 builder.AppendLine("/// <summary>");
                 builder.AppendLine($"/// Get {prop.Name} value.");
@@ -53,8 +55,9 @@ namespace TraitSharp.SourceGenerator.Generators
                 builder.AppendLine();
             }
 
-            // Method trait extension methods
-            foreach (var method in trait.Methods)
+            // Method trait extension methods — own only (inherited come from base trait's extensions)
+            var ownMethods = trait.HasBaseTraits ? trait.OwnMethods : trait.Methods;
+            foreach (var method in ownMethods)
             {
                 var returnType = method.ReturnsSelf ? "T" : method.ReturnType;
 
