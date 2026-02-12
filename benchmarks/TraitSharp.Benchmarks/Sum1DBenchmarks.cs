@@ -11,7 +11,7 @@ namespace TraitSharp.Benchmarks;
 [Config(typeof(FastBenchmarkConfig))]
 public class Sum1DBenchmarks : ArraySetupBase
 {
-    [Benchmark(Baseline = true)]
+    [Benchmark]
     public long NativeArray_Sum1D()
     {
         long sum = 0;
@@ -23,7 +23,7 @@ public class Sum1DBenchmarks : ArraySetupBase
         return sum;
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public long NativeSpan_Sum1D()
     {
         long sum = 0;
