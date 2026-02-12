@@ -59,4 +59,20 @@ public class Sum2DBenchmarks : ArraySetupBase
         }
         return sum;
     }
+
+    [Benchmark]
+    public long TraitNativeSpan_Sum2D()
+    {
+        long sum = 0;
+        ReadOnlySpan<CoordinateLayout> flat = _array.AsCoordinateNativeSpan();
+        for (int row = 0; row < Height; row++)
+        {
+            for (int col = 0; col < Width; col++)
+            {
+                ref readonly var coord = ref flat[row * Width + col];
+                sum += coord.X + coord.Y;
+            }
+        }
+        return sum;
+    }
 }

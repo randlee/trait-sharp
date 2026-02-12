@@ -38,5 +38,18 @@ namespace TraitSharp.Runtime
         {
             throw new ArgumentException("Source length must equal width * height.");
         }
+
+        /// <summary>
+        /// Throws an <see cref="InvalidOperationException"/> indicating the backing type
+        /// is not 1:1 layout compatible (same size and zero offset) with the trait layout.
+        /// </summary>
+        [DoesNotReturn]
+        public static void ThrowInvalidOperationException_NotLayoutCompatible()
+        {
+            throw new InvalidOperationException(
+                "The backing type is not 1:1 layout compatible with the trait layout. " +
+                "Use the TraitSpan factory (AsXxxSpan) instead, or verify that " +
+                "sizeof(T) == sizeof(TLayout) and TraitOffset == 0.");
+        }
     }
 }

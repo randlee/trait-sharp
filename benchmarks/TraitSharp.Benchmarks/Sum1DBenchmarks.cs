@@ -47,4 +47,16 @@ public class Sum1DBenchmarks : ArraySetupBase
         }
         return sum;
     }
+
+    [Benchmark]
+    public long TraitNativeSpan_Sum1D()
+    {
+        long sum = 0;
+        ReadOnlySpan<CoordinateLayout> span = _array.AsCoordinateNativeSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            sum += span[i].X + span[i].Y;
+        }
+        return sum;
+    }
 }
