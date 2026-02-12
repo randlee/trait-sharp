@@ -46,6 +46,13 @@ namespace TraitSharp.Runtime
             get => _length == 0;
         }
 
+        /// <summary>Gets the stride in bytes between successive elements.</summary>
+        public int Stride
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _stride;
+        }
+
         /// <summary>
         /// Returns a read-only reference to the element at the specified index.
         /// </summary>
@@ -60,6 +67,28 @@ namespace TraitSharp.Runtime
                     ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
                         (nint)(index * _stride)));
             }
+        }
+
+        /// <summary>
+        /// Returns a read-only reference to the first element without bounds checking.
+        /// The caller is responsible for ensuring the span is non-empty.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly TLayout DangerousGetReference()
+        {
+            return ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference));
+        }
+
+        /// <summary>
+        /// Returns a read-only reference to the element at the specified index without bounds checking.
+        /// The caller is responsible for ensuring the index is within bounds.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly TLayout DangerousGetReferenceAt(int index)
+        {
+            return ref Unsafe.As<byte, TLayout>(
+                ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
+                    (nint)(index * _stride)));
         }
 
         /// <summary>
@@ -93,15 +122,18 @@ namespace TraitSharp.Runtime
 
         /// <summary>
         /// Copies the contents of this span to a destination span.
-        /// Each element is copied by value from the strided source.
+        /// Uses unchecked access internally for performance.
         /// </summary>
         public void CopyTo(Span<TLayout> destination)
         {
             if ((uint)_length > (uint)destination.Length)
                 ThrowHelper.ThrowArgumentException_DestinationTooShort();
+            ref byte src = ref Unsafe.AsRef(in _reference);
+            int stride = _stride;
             for (int i = 0; i < _length; i++)
             {
-                destination[i] = this[i];
+                destination[i] = Unsafe.As<byte, TLayout>(ref src);
+                src = ref Unsafe.AddByteOffset(ref src, (nint)stride);
             }
         }
 
@@ -120,10 +152,13 @@ namespace TraitSharp.Runtime
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Enumerator GetEnumerator() => new(this);
 
-        /// <summary>Enumerates elements of a ReadOnlyTraitSpan.</summary>
+        /// <summary>
+        /// Enumerates elements of a ReadOnlyTraitSpan.
+        /// Uses pointer increment (add) per step instead of multiply for performance.
+        /// </summary>
         public ref struct Enumerator
         {
-            private readonly ref byte _reference;
+            private ref byte _current;
             private readonly int _stride;
             private readonly int _length;
             private int _index;
@@ -131,7 +166,7 @@ namespace TraitSharp.Runtime
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal Enumerator(ReadOnlyTraitSpan<TLayout> span)
             {
-                _reference = ref Unsafe.AsRef(in span._reference);
+                _current = ref Unsafe.SubtractByteOffset(ref Unsafe.AsRef(in span._reference), (nint)span._stride);
                 _stride = span._stride;
                 _length = span._length;
                 _index = -1;
@@ -145,6 +180,7 @@ namespace TraitSharp.Runtime
                 if (index < _length)
                 {
                     _index = index;
+                    _current = ref Unsafe.AddByteOffset(ref _current, (nint)_stride);
                     return true;
                 }
                 return false;
@@ -154,8 +190,7 @@ namespace TraitSharp.Runtime
             public ref readonly TLayout Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get => ref Unsafe.As<byte, TLayout>(
-                    ref Unsafe.AddByteOffset(ref _reference, (nint)(_index * _stride)));
+                get => ref Unsafe.As<byte, TLayout>(ref _current);
             }
         }
 

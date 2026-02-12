@@ -91,6 +91,28 @@ namespace TraitSharp.Runtime
         }
 
         /// <summary>
+        /// Returns a read-only reference to the element at (0,0) without bounds checking.
+        /// The caller is responsible for ensuring the span is non-empty.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly TLayout DangerousGetReference()
+        {
+            return ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference));
+        }
+
+        /// <summary>
+        /// Returns a read-only reference to the element at (row, col) without bounds checking.
+        /// The caller is responsible for ensuring the indices are within bounds.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly TLayout DangerousGetReferenceAt(int row, int col)
+        {
+            return ref Unsafe.As<byte, TLayout>(
+                ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
+                    (nint)(row * _rowStride + col * _stride)));
+        }
+
+        /// <summary>
         /// Gets a single row as a ReadOnlyTraitSpan.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
