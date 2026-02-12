@@ -4,13 +4,24 @@ using TraitSharp;
 namespace TraitSharp.Benchmarks;
 
 /// <summary>
-/// Minimal coordinate trait — matches BenchmarkPoint's X/Y layout.
+/// Minimal coordinate trait -- matches BenchmarkPoint's X/Y layout.
 /// </summary>
 [Trait(GenerateLayout = true)]
 public partial interface ICoordinate
 {
     int X { get; }
     int Y { get; }
+}
+
+/// <summary>
+/// Size trait -- Width/Height layout.
+/// Used by BenchmarkRect for composite trait benchmarks.
+/// </summary>
+[Trait(GenerateLayout = true)]
+public partial interface ISize
+{
+    int Width { get; }
+    int Height { get; }
 }
 
 /// <summary>
@@ -31,5 +42,29 @@ public partial struct BenchmarkPoint
     {
         X = x;
         Y = y;
+    }
+}
+
+/// <summary>
+/// A plain struct with sequential layout: X, Y, Width, Height.
+/// Implements both ICoordinate (offset 0: X,Y) and ISize (offset 8: Width,Height).
+/// This benchmarks composite trait access -- two traits projected from one struct.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+[ImplementsTrait(typeof(ICoordinate))]
+[ImplementsTrait(typeof(ISize))]
+public partial struct BenchmarkRect
+{
+    public int X;
+    public int Y;
+    public int Width;
+    public int Height;
+
+    public BenchmarkRect(int x, int y, int width, int height)
+    {
+        X = x;
+        Y = y;
+        Width = width;
+        Height = height;
     }
 }
