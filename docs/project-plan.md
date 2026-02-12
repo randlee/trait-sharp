@@ -1046,64 +1046,9 @@ Total Phases 6–12:                      275 passing           185 tests added
 
 ## Nice-to-Have: Future Enhancements
 
-The following features are **deferred** — not required for current functionality. Both are ~3–4 day efforts with medium-high risk concentrated in the `DefaultBodyRewriter`. Will consider/address after benchmarks (Phase 13) confirm the performance story is solid.
+The following features are **deferred** — not required for current functionality. Both are ~3–4 day efforts with medium-high risk concentrated in the `DefaultBodyRewriter`. Will consider after benchmarks (Phase 13) confirm the performance story.
 
-### A. Mutable Methods (`ref Self`)
-
-**Summary:** Allow trait methods to take `ref Self` (mutable receiver) instead of the current `in Self` (readonly). Enables mutation-oriented patterns like `void Translate(float dx, float dy)` that modify the struct in place.
-
-**Complexity:** ~3–4 days | **Risk:** Medium-High
-
-**What would change:**
-
-| Component | Change | Risk |
-|-----------|--------|------|
-| `TraitModel` | Add `IsMutableSelf` flag to `TraitMethod` | Low |
-| `TraitGenerator` | Parse `ref Self` vs `in Self` in method signatures | Low |
-| `ConstraintInterfaceGenerator` | Emit `ref TSelf self` instead of `in TSelf self` per-method | **High** — `in` is hardcoded in 3 generators; must change in lockstep |
-| `ExtensionMethodsGenerator` | Already uses `this ref T` — minimal change | Low |
-| `ImplementationGenerator` | Emit `ref {Type} self` for mutable methods | Medium |
-| `DefaultBodyRewriter` | Must know mutability context — property access through `ref self` uses different codegen than `in self` | Medium |
-| Runtime (TraitSpan) | No changes needed — already returns mutable `ref TLayout` | None |
-| Cross-assembly metadata | Encode mutability in `[TraitDefaultBody]` | Medium |
-
-**Key risks:**
-- **Generator coordination:** The `in TSelf self` first parameter is hardcoded in `ConstraintInterfaceGenerator`, `ExtensionMethodsGenerator`, and `ImplementationGenerator`. All three must change in sync per-method based on `IsMutableSelf`.
-- **Mixed mutability:** A trait with both `in Self` and `ref Self` methods needs the contract interface to emit each method with the correct modifier. This is a per-method decision, not per-trait.
-- **DefaultBodyRewriter scope:** Default bodies that call other trait methods must forward `ref self` vs `in self` correctly. A mutable default calling a readonly method is fine (`ref` → `in` implicit), but a readonly default calling a mutable method is a compile error the rewriter can't catch.
-- **Backward compatibility:** All existing code assumes immutable self. Must ensure `ref Self` is opt-in per method, never changes default behavior.
-
-**Diagnostic additions:** `TE0014_MutableSelfInReadonlyContext` — default body with `in Self` calls a `ref Self` method.
-
-### B. Generic Method Parameters
-
-**Summary:** Allow trait methods to have their own generic type parameters beyond `Self`, e.g., `T Convert<T>() where T : unmanaged` or `void Process<TArg>(TArg arg)`.
-
-**Complexity:** ~3–4 days | **Risk:** Medium-High
-
-**What would change:**
-
-| Component | Change | Risk |
-|-----------|--------|------|
-| `TraitModel` | Add `TypeParameterNames` list + `TypeConstraints` list to `TraitMethod` | Low |
-| `TraitGenerator` | Remove hard rejection (`TypeParameters.Length > 0 → return null`), capture type params and constraints | Medium |
-| `ConstraintInterfaceGenerator` | Emit `static abstract T Convert_Impl<T>(in TSelf self) where T : unmanaged` | Low |
-| `ExtensionMethodsGenerator` | Nested generics: `Convert<T, TResult>(this ref T self)` — must order type params correctly | Low-Medium |
-| `ImplementationGenerator` | Emit generic type params on implementation stubs | Low |
-| `DefaultBodyRewriter` | Handle `GenericNameSyntax` nodes — `Convert<int>()` must rewrite to `T.Convert_Impl<int>(in self)` | **High** — rewriter has zero generic awareness today |
-| Override detection | Must match type parameter count in `HasUserOverride()` | Medium |
-| Cross-assembly metadata | Encode type parameter constraints in metadata attributes | Medium |
-| Overload disambiguation | Suffix must include type parameter count — `Method__1_Impl` vs `Method__2_Impl` | Medium |
-
-**Key risks:**
-- **DefaultBodyRewriter:** The Roslyn `SyntaxRewriter` currently only handles `IdentifierNameSyntax` for method calls. Generic calls use `GenericNameSyntax` — a new visitor override is required. The rewriter must also distinguish between a method's own type parameter `T` (leave alone) and a trait property/method reference (rewrite).
-- **Constraint complexity:** C# supports complex constraints (intersection types, `notnull`, `unmanaged`, `class?` in C# 11+). Initially support only simple constraints: `unmanaged`, `class`, `struct`, `new()`, single base type/interface.
-- **Cross-assembly constraint encoding:** Type parameter constraints must survive compilation boundaries via metadata attributes — current `TraitDefaultBodyAttribute` only stores body syntax, not type signatures.
-- **Overload disambiguation:** `void M<T>()` and `void M<T, U>()` need distinct suffixes. Current suffix logic only considers parameter count.
-
-**Diagnostic additions:** `TE0015_UnsupportedTypeParameterConstraint` — complex constraint type not yet supported.
-
-**Recommended approach if pursued:** Implement in 3 sub-phases:
-1. Model + ConstraintInterface + Implementation generators (low risk, ~1 day)
-2. TraitGenerator parsing + ExtensionMethods + override detection (~1.5 days)
-3. DefaultBodyRewriter generic syntax support (~1.5 days, highest risk)
+| Feature | Complexity | Risk | Proposal |
+|---------|-----------|------|----------|
+| **Mutable Methods (`ref Self`)** — opt-in `ref Self` receiver for mutation-oriented patterns | ~3–4 days | Medium-High | [mutable-methods-proposal.md](proposals/mutable-methods-proposal.md) |
+| **Generic Method Parameters** — method-level type params beyond `Self`, e.g., `T Convert<T>()` | ~3–4 days | Medium-High | [generic-method-parameters-proposal.md](proposals/generic-method-parameters-proposal.md) |
