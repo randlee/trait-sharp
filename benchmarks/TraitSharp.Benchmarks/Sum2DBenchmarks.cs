@@ -66,10 +66,8 @@ public class Sum2DBenchmarks : ArraySetupBase
         var span2d = _array.AsCoordinateSpan2D(Width, Height);
         for (int row = 0; row < span2d.Height; row++)
         {
-            var rowSpan = span2d.GetRow(row);
-            for (int i = 0; i < rowSpan.Length; i++)
+            foreach (ref readonly var coord in span2d.GetRow(row))
             {
-                ref readonly var coord = ref rowSpan[i];
                 sum += coord.X + coord.Y;
             }
         }

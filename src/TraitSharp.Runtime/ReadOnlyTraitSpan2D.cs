@@ -9,7 +9,7 @@ namespace TraitSharp.Runtime
     /// projected through a trait layout. Provides row/column indexing over
     /// data stored in row-major order.
     /// </summary>
-    [StructLayout(LayoutKind.Auto)]
+    [StructLayout(LayoutKind.Sequential)]
     public readonly ref struct ReadOnlyTraitSpan2D<TLayout>
         where TLayout : unmanaged
     {
@@ -72,6 +72,42 @@ namespace TraitSharp.Runtime
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _width == 0 || _height == 0;
+        }
+
+        /// <summary>Gets whether the data is contiguous (stride equals layout size), enabling native Span operations and SIMD.</summary>
+        public bool IsContiguous
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _stride == Unsafe.SizeOf<TLayout>();
+        }
+
+        /// <summary>
+        /// Returns a native ReadOnlySpan&lt;TLayout&gt; over the same data when contiguous (row-major order).
+        /// Enables SIMD/Vector&lt;T&gt; operations via MemoryMarshal.Cast on the result.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown when the data is not contiguous.</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<TLayout> AsNativeSpan()
+        {
+            if (_stride != Unsafe.SizeOf<TLayout>())
+                ThrowHelper.ThrowInvalidOperationException_NotContiguous();
+            return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
+        }
+
+        /// <summary>
+        /// Attempts to return a native ReadOnlySpan&lt;TLayout&gt; over the same data.
+        /// Returns true and sets result if the data is contiguous; false otherwise.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryAsNativeSpan(out ReadOnlySpan<TLayout> result)
+        {
+            if (_stride == Unsafe.SizeOf<TLayout>())
+            {
+                result = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
+                return true;
+            }
+            result = default;
+            return false;
         }
 
         /// <summary>

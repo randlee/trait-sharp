@@ -39,10 +39,8 @@ public class Sum1DBenchmarks : ArraySetupBase
     public long TraitSpan_Sum1D()
     {
         long sum = 0;
-        var span = _array.AsCoordinateSpan();
-        for (int i = 0; i < span.Length; i++)
+        foreach (ref readonly var coord in _array.AsCoordinateSpan())
         {
-            ref readonly var coord = ref span[i];
             sum += coord.X + coord.Y;
         }
         return sum;

@@ -51,5 +51,18 @@ namespace TraitSharp.Runtime
                 "Use the TraitSpan factory (AsXxxSpan) instead, or verify that " +
                 "sizeof(T) == sizeof(TLayout) and TraitOffset == 0.");
         }
+
+        /// <summary>
+        /// Throws an <see cref="InvalidOperationException"/> indicating the trait span
+        /// data is not contiguous (stride != sizeof(TLayout)) and cannot be viewed as a native span.
+        /// </summary>
+        [DoesNotReturn]
+        public static void ThrowInvalidOperationException_NotContiguous()
+        {
+            throw new InvalidOperationException(
+                "The trait span data is not contiguous (stride != sizeof(TLayout)). " +
+                "Use IsContiguous to check before calling AsNativeSpan(), or use " +
+                "TryAsNativeSpan() for a safe alternative.");
+        }
     }
 }

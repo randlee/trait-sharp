@@ -9,7 +9,7 @@ namespace TraitSharp.Runtime
     /// projected through a trait layout at a fixed byte offset with stride.
     /// Analogous to ReadOnlySpan&lt;T&gt; but with offset/stride semantics.
     /// </summary>
-    [StructLayout(LayoutKind.Auto)]
+    [StructLayout(LayoutKind.Sequential)]
     public readonly ref struct ReadOnlyTraitSpan<TLayout>
         where TLayout : unmanaged
     {
@@ -51,6 +51,42 @@ namespace TraitSharp.Runtime
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => _stride;
+        }
+
+        /// <summary>Gets whether the data is contiguous (stride equals layout size), enabling native Span operations and SIMD.</summary>
+        public bool IsContiguous
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _stride == Unsafe.SizeOf<TLayout>();
+        }
+
+        /// <summary>
+        /// Returns a native ReadOnlySpan&lt;TLayout&gt; over the same data when contiguous.
+        /// Enables SIMD/Vector&lt;T&gt; operations via MemoryMarshal.Cast on the result.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown when the data is not contiguous (stride != sizeof(TLayout)).</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<TLayout> AsNativeSpan()
+        {
+            if (_stride != Unsafe.SizeOf<TLayout>())
+                ThrowHelper.ThrowInvalidOperationException_NotContiguous();
+            return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _length);
+        }
+
+        /// <summary>
+        /// Attempts to return a native ReadOnlySpan&lt;TLayout&gt; over the same data.
+        /// Returns true and sets result if the data is contiguous; false otherwise.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryAsNativeSpan(out ReadOnlySpan<TLayout> result)
+        {
+            if (_stride == Unsafe.SizeOf<TLayout>())
+            {
+                result = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _length);
+                return true;
+            }
+            result = default;
+            return false;
         }
 
         /// <summary>
@@ -128,6 +164,13 @@ namespace TraitSharp.Runtime
         {
             if ((uint)_length > (uint)destination.Length)
                 ThrowHelper.ThrowArgumentException_DestinationTooShort();
+            if (_stride == Unsafe.SizeOf<TLayout>())
+            {
+                MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _length)
+                    .CopyTo(destination);
+                return;
+            }
             ref byte src = ref Unsafe.AsRef(in _reference);
             int stride = _stride;
             for (int i = 0; i < _length; i++)
