@@ -1,0 +1,127 @@
+name: Publish NuGet Packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish_nuget_org:
+        description: 'Also publish to NuGet.org (requires NUGET_API_KEY secret)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CONFIGURATION: Release
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_tag: ${{ steps.version.outputs.is_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "version=${TAG_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+            echo "📦 Package version: ${TAG_VERSION} (from tag)"
+          else
+            BASE_VERSION=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props)
+            CI_VERSION="${BASE_VERSION}-ci.${GITHUB_RUN_NUMBER}"
+            echo "version=${CI_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+            echo "📦 Package version: ${CI_VERSION} (CI pre-release)"
+          fi
+
+      - name: Restore
+        run: dotnet restore TraitSharp.sln
+
+      - name: Build
+        run: dotnet build TraitSharp.sln --no-restore -c ${{ env.CONFIGURATION }}
+
+      - name: Test
+        run: dotnet test TraitSharp.sln --no-build -c ${{ env.CONFIGURATION }} --verbosity normal
+
+      - name: Pack
+        run: >-
+          dotnet pack TraitSharp.sln
+          --no-build
+          -c ${{ env.CONFIGURATION }}
+          /p:Version=${{ steps.version.outputs.version }}
+          -o ./artifacts/packages
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/packages/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-github:
+    needs: pack
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./packages
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Push to GitHub Packages
+        run: >-
+          dotnet nuget push "./packages/*.nupkg"
+          --source "https://nuget.pkg.github.com/randlee/index.json"
+          --api-key ${{ secrets.GITHUB_TOKEN }}
+          --skip-duplicate
+
+  publish-nuget-org:
+    needs: pack
+    runs-on: ubuntu-latest
+    if: >-
+      needs.pack.outputs.is_tag == 'true'
+      || (github.event_name == 'workflow_dispatch' && inputs.publish_nuget_org == true)
+    environment: nuget-org
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./packages
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Push to NuGet.org
+        run: >-
+          dotnet nuget push "./packages/*.nupkg"
+          --source "https://api.nuget.org/v3/index.json"
+          --api-key ${{ secrets.NUGET_API_KEY }}
