@@ -141,6 +141,111 @@ namespace TraitSharp.SourceGenerator.Generators
             builder.AppendLine("    width,");
             builder.AppendLine("    height);");
             builder.CloseBrace();
+            builder.AppendLine();
+
+            // --- Native Span fast-path factory methods ---
+            // These return Span<TLayout> / ReadOnlySpan<TLayout> directly via MemoryMarshal.Cast
+            // when the backing struct is 1:1 compatible (same size, zero offset).
+            // The JIT constant-folds the guard: T.TraitOffset and Unsafe.SizeOf<T>() are both
+            // JIT-time constants for any concrete T, so the branch is dead-code-eliminated.
+            // This enables full SIMD auto-vectorization that strided TraitSpan cannot achieve.
+
+            // 5. AsXxxNativeSpan - ReadOnly native span from ReadOnlySpan<T>
+            builder.AppendLine("/// <summary>");
+            builder.AppendLine($"/// Returns a native ReadOnlySpan&lt;{trait.LayoutStructName}&gt; viewing {trait.Name} fields,");
+            builder.AppendLine("/// enabling SIMD auto-vectorization. Requires 1:1 layout compatibility:");
+            builder.AppendLine("/// the backing struct must have the same size as the layout and zero trait offset.");
+            builder.AppendLine("/// </summary>");
+            builder.AppendLine("/// <exception cref=\"InvalidOperationException\">");
+            builder.AppendLine("/// Thrown when the backing type is not 1:1 layout compatible.");
+            builder.AppendLine("/// </exception>");
+            builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+            builder.AppendLine($"public static ReadOnlySpan<{layoutType}> As{shortName}NativeSpan<T>(");
+            builder.AppendLine($"    this ReadOnlySpan<T> source)");
+            builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
+            builder.OpenBrace();
+            builder.AppendLine($"if (T.TraitOffset != 0 || Unsafe.SizeOf<T>() != Unsafe.SizeOf<{layoutType}>())");
+            builder.AppendLine($"    ThrowHelper.ThrowInvalidOperationException_NotLayoutCompatible();");
+            builder.AppendLine($"return MemoryMarshal.Cast<T, {layoutType}>(source);");
+            builder.CloseBrace();
+            builder.AppendLine();
+
+            // 5b. AsXxxNativeSpan - ReadOnly native span from Span<T>
+            builder.AppendLine("/// <summary>");
+            builder.AppendLine($"/// Returns a native ReadOnlySpan&lt;{trait.LayoutStructName}&gt; viewing {trait.Name} fields,");
+            builder.AppendLine("/// enabling SIMD auto-vectorization. Requires 1:1 layout compatibility.");
+            builder.AppendLine("/// </summary>");
+            builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+            builder.AppendLine($"public static ReadOnlySpan<{layoutType}> As{shortName}NativeSpan<T>(");
+            builder.AppendLine($"    this Span<T> source)");
+            builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
+            builder.OpenBrace();
+            builder.AppendLine($"return As{shortName}NativeSpan<T>((ReadOnlySpan<T>)source);");
+            builder.CloseBrace();
+            builder.AppendLine();
+
+            // 6. AsXxxNativeTraitSpan - Mutable native span from Span<T>
+            builder.AppendLine("/// <summary>");
+            builder.AppendLine($"/// Returns a native Span&lt;{trait.LayoutStructName}&gt; viewing {trait.Name} fields,");
+            builder.AppendLine("/// enabling SIMD auto-vectorization. Requires 1:1 layout compatibility:");
+            builder.AppendLine("/// the backing struct must have the same size as the layout and zero trait offset.");
+            builder.AppendLine("/// </summary>");
+            builder.AppendLine("/// <exception cref=\"InvalidOperationException\">");
+            builder.AppendLine("/// Thrown when the backing type is not 1:1 layout compatible.");
+            builder.AppendLine("/// </exception>");
+            builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+            builder.AppendLine($"public static Span<{layoutType}> As{shortName}NativeTraitSpan<T>(");
+            builder.AppendLine($"    this Span<T> source)");
+            builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
+            builder.OpenBrace();
+            builder.AppendLine($"if (T.TraitOffset != 0 || Unsafe.SizeOf<T>() != Unsafe.SizeOf<{layoutType}>())");
+            builder.AppendLine($"    ThrowHelper.ThrowInvalidOperationException_NotLayoutCompatible();");
+            builder.AppendLine($"return MemoryMarshal.Cast<T, {layoutType}>(source);");
+            builder.CloseBrace();
+            builder.AppendLine();
+
+            // 7. TryAsXxxNativeSpan - Safe try-pattern for ReadOnly
+            builder.AppendLine("/// <summary>");
+            builder.AppendLine($"/// Attempts to return a native ReadOnlySpan&lt;{trait.LayoutStructName}&gt; viewing {trait.Name} fields.");
+            builder.AppendLine("/// Returns true and sets result if the backing type is 1:1 layout compatible;");
+            builder.AppendLine("/// returns false otherwise. Use this for safe conditional optimization.");
+            builder.AppendLine("/// </summary>");
+            builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+            builder.AppendLine($"public static bool TryAs{shortName}NativeSpan<T>(");
+            builder.AppendLine($"    this ReadOnlySpan<T> source,");
+            builder.AppendLine($"    out ReadOnlySpan<{layoutType}> result)");
+            builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
+            builder.OpenBrace();
+            builder.AppendLine($"if (T.TraitOffset == 0 && Unsafe.SizeOf<T>() == Unsafe.SizeOf<{layoutType}>())");
+            builder.OpenBrace();
+            builder.AppendLine($"result = MemoryMarshal.Cast<T, {layoutType}>(source);");
+            builder.AppendLine("return true;");
+            builder.CloseBrace();
+            builder.AppendLine($"result = default;");
+            builder.AppendLine("return false;");
+            builder.CloseBrace();
+            builder.AppendLine();
+
+            // 8. TryAsXxxNativeTraitSpan - Safe try-pattern for Mutable
+            builder.AppendLine("/// <summary>");
+            builder.AppendLine($"/// Attempts to return a native Span&lt;{trait.LayoutStructName}&gt; viewing {trait.Name} fields.");
+            builder.AppendLine("/// Returns true and sets result if the backing type is 1:1 layout compatible;");
+            builder.AppendLine("/// returns false otherwise. Use this for safe conditional optimization.");
+            builder.AppendLine("/// </summary>");
+            builder.AppendLine("[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+            builder.AppendLine($"public static bool TryAs{shortName}NativeTraitSpan<T>(");
+            builder.AppendLine($"    this Span<T> source,");
+            builder.AppendLine($"    out Span<{layoutType}> result)");
+            builder.AppendLine($"    where T : unmanaged, {contractName}<T>");
+            builder.OpenBrace();
+            builder.AppendLine($"if (T.TraitOffset == 0 && Unsafe.SizeOf<T>() == Unsafe.SizeOf<{layoutType}>())");
+            builder.OpenBrace();
+            builder.AppendLine($"result = MemoryMarshal.Cast<T, {layoutType}>(source);");
+            builder.AppendLine("return true;");
+            builder.CloseBrace();
+            builder.AppendLine($"result = default;");
+            builder.AppendLine("return false;");
+            builder.CloseBrace();
 
             builder.CloseBrace();
             builder.CloseBrace();

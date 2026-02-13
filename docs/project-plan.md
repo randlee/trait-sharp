@@ -1,10 +1,10 @@
 # TraitSharp Project Plan
 
 ## Status: Active
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-08
 **Branch:** develop
 **Current Version:** 0.1.0-alpha
-**Test Count:** 253 (83 generator + 170 runtime)
+**Test Count:** 275 (83 generator + 170 runtime + 22 cross-assembly)
 
 ---
 
@@ -19,7 +19,7 @@
 | Phase 5 | NuGet packaging for all three packages | `7fd0e09` | ✅ Done |
 | Refactor | Rename TraitEmulation → TraitSharp | `ef8a12e` | ✅ Done |
 
-**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance with method dispatch, method traits with default implementations, parameterized defaults, chained dispatch, inherited method dispatch through multi-level hierarchies, external type registration, strided span types, NuGet packaging. 253 tests passing.
+**Current capability:** Property-based traits with zero-copy layout casts, trait inheritance with method dispatch, method traits with default implementations, parameterized defaults, chained dispatch, inherited method dispatch through multi-level hierarchies, cross-assembly trait support with default body metadata pipeline, external type registration, strided span types, NuGet packaging. 275 tests passing (83 generator + 170 runtime + 22 cross-assembly).
 
 ---
 
@@ -766,7 +766,7 @@ Consumer sample: `IAnimal`/`IPet` hierarchy with `Snake`, `Dog`, `Cat` — 42 in
 
 **Goal:** Validate cross-assembly trait patterns — traits defined in one assembly, implemented in another — with full method trait support. **Requires creating a separate project/assembly** since true cross-assembly testing cannot be done within a single project.
 
-**Status:** Not Started
+**Status:** ✅ Done — Commit `3fad92f` (PR #9)
 
 **Prerequisite:** Phase 11 complete
 
@@ -862,6 +862,138 @@ Implement traits in the Implementations library:
 
 ---
 
+## Phase 13: Performance Benchmarks (BenchmarkDotNet)
+
+**Goal:** Prove that TraitSharp's zero-copy trait dispatch has no measurable performance degradation compared to native struct access. Establish a benchmark suite that can be run before each release to detect regressions.
+
+**Status:** Not Started
+
+**Prerequisite:** Phase 12 complete (all trait features implemented)
+
+**Rationale:** TraitSharp claims zero-copy, zero-allocation performance via `Unsafe.As` and `Unsafe.AddByteOffset`. This must be validated with rigorous microbenchmarks against direct struct field access and method calls. Without benchmarks, the performance story is theoretical.
+
+### Sprint 13.1: Benchmark Project Setup
+
+**Effort:** 0.5 days
+
+- Create `benchmarks/TraitSharp.Benchmarks/` project with BenchmarkDotNet
+- Target `net8.0` with `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>`
+- Configure: `[MemoryDiagnoser]`, `[DisassemblyDiagnoser]` for allocation + JIT analysis
+- Add to `TraitSharp.sln` (not run by CI — manual/release-gated only)
+- Reference `TraitSharp.Runtime`, `TraitSharp.Attributes`, `TraitSharp.SourceGenerator` (as Analyzer)
+
+### Sprint 13.2: Property Access Benchmarks
+
+**Effort:** 1 day
+
+Compare trait property access vs direct struct field access:
+
+| Benchmark | Description |
+|-----------|-------------|
+| `DirectField_Read` | Baseline: `point.X` direct struct field read |
+| `TraitLayout_Read` | `ref readonly var layout = ref point.AsCoordinate(); layout.X` |
+| `ExtensionMethod_Read` | `point.GetX()` via generated extension method |
+| `DirectField_ReadLoop` | Baseline: loop over array reading fields |
+| `TraitSpan_ReadLoop` | `TraitSpan<CoordinateLayout>` iteration reading fields |
+| `DirectField_Write` | Baseline: `point.X = value` direct write |
+| `TraitLayout_Write` | Write through mutable layout ref |
+
+**Expected result:** TraitLayout and ExtensionMethod reads should be **identical** to DirectField (JIT should elide the `Unsafe.As` call entirely). TraitSpan iteration should match native array iteration.
+
+### Sprint 13.3: Method Dispatch Benchmarks
+
+**Effort:** 1 day
+
+Compare trait method dispatch vs direct static method calls:
+
+| Benchmark | Description |
+|-----------|-------------|
+| `DirectCall_Required` | Baseline: `Rectangle.Area_Impl(in rect)` direct call |
+| `TraitDispatch_Required` | `IShape.Area(in rect)` via extension → `T.Area_Impl(in self)` |
+| `DirectCall_Default` | Baseline: direct call to default method impl |
+| `TraitDispatch_Default` | Default method via trait dispatch |
+| `DirectCall_Chained` | Baseline: `ScaledArea(2.0f)` calling `Area()` directly |
+| `TraitDispatch_Chained` | Chained dispatch through trait extension methods |
+| `VirtualDispatch_Interface` | Comparison: `IShape` interface virtual dispatch (boxing baseline) |
+
+**Expected result:** Trait dispatch should match direct static calls (both are devirtualized by JIT). Virtual dispatch should be measurably slower due to boxing + vtable lookup.
+
+### Sprint 13.4: Span & Iteration Benchmarks
+
+**Effort:** 1 day
+
+Compare TraitSpan performance vs native arrays and Span<T>:
+
+| Benchmark | Description |
+|-----------|-------------|
+| `NativeArray_Iterate` | Baseline: `for` loop over `Point[]` |
+| `NativeSpan_Iterate` | Baseline: `Span<Point>` iteration |
+| `TraitSpan_Iterate` | `TraitSpan<PointLayout>` iteration |
+| `NativeArray_Sum` | Baseline: sum `X + Y` over array |
+| `TraitSpan_Sum` | Sum via trait span property access |
+| `TraitSpan_Slice` | Slice operation vs `Span.Slice` |
+| `TraitSpan2D_RowIterate` | 2D span row iteration vs jagged array |
+| `TraitSpan_Creation` | `SpanFactory.Create<Point>()` vs `new Span<Point>()` |
+
+**Expected result:** TraitSpan should be within 0–5% of native Span<T> for all operations. 2D span should be competitive with manual stride calculations.
+
+### Sprint 13.5: Allocation & Memory Benchmarks
+
+**Effort:** 0.5 days
+
+Verify zero-allocation claims:
+
+| Benchmark | Description |
+|-----------|-------------|
+| `PropertyAccess_NoAlloc` | `[MemoryDiagnoser]` confirms 0 bytes allocated |
+| `MethodDispatch_NoAlloc` | Method trait dispatch allocates nothing |
+| `SpanIteration_NoAlloc` | Full span iteration allocates nothing |
+| `LayoutCast_NoAlloc` | `Unsafe.As` cast allocates nothing |
+| `GenericAlgorithm_NoAlloc` | Generic algorithm over trait-constrained span — 0 alloc |
+| `InterfaceBaseline_Allocs` | Comparison: interface dispatch DOES allocate (boxing) |
+
+**Expected result:** All trait operations show 0 bytes allocated. Interface baseline shows boxing allocations for comparison.
+
+### Sprint 13.6: Cross-Assembly Performance
+
+**Effort:** 0.5 days
+
+Verify cross-assembly trait access has no overhead:
+
+| Benchmark | Description |
+|-----------|-------------|
+| `SameAssembly_PropertyAccess` | Trait defined + implemented in same assembly |
+| `CrossAssembly_PropertyAccess` | Trait from `CrossAssembly.Traits`, impl in benchmark project |
+| `SameAssembly_MethodDispatch` | Same-assembly method trait dispatch |
+| `CrossAssembly_MethodDispatch` | Cross-assembly method trait dispatch |
+
+**Expected result:** No measurable difference — the source generator runs at compile time; runtime code is identical.
+
+### Sprint 13.7: Disassembly Analysis & Report
+
+**Effort:** 0.5 days
+
+- Run `[DisassemblyDiagnoser]` on key benchmarks to verify JIT optimization
+- Confirm `Unsafe.As<T>` is compiled to a no-op (zero instructions)
+- Confirm static abstract method dispatch is devirtualized
+- Write `docs/benchmarks.md` with results table and analysis
+- Include JIT disassembly snippets for key paths
+
+### Phase 13 Summary
+
+| Sprint | Benchmarks | Effort |
+|--------|-----------|--------|
+| 13.1 Project setup | — | 0.5 days |
+| 13.2 Property access | ~7 | 1 day |
+| 13.3 Method dispatch | ~7 | 1 day |
+| 13.4 Span & iteration | ~8 | 1 day |
+| 13.5 Allocation & memory | ~6 | 0.5 days |
+| 13.6 Cross-assembly | ~4 | 0.5 days |
+| 13.7 Disassembly & report | — | 0.5 days |
+| **Total** | **~32 benchmarks** | **~5 days** |
+
+---
+
 ## Timeline Overview
 
 ```
@@ -871,10 +1003,10 @@ Phase 8: Method Traits                  ✅ Done   (1c5ff28)  12 new tests
 Phase 9: Default Implementations        ✅ Done   (7bda269)  14 new tests
 Phase 10: Parameterized Defaults        ✅ Done   (4a2b8f0)  28 new tests
 Phase 11: Inherited Method Dispatch     ✅ Done   (828230d)  24 new tests
-Phase 12: Cross-Assembly Traits         Not Started           ~10 new tests
+Phase 12: Cross-Assembly Traits         ✅ Done   (3fad92f)  22 new tests
+Phase 13: Performance Benchmarks        Not Started           ~32 benchmarks
                                         ─────────
-Total Phases 6–11:                      253 passing           163 tests added
-Phase 12 (planned):                     253 → ~263            ~10 new tests
+Total Phases 6–12:                      275 passing           185 tests added
 ```
 
 ---
@@ -907,7 +1039,16 @@ Phase 12 (planned):                     253 → ~263            ~10 new tests
 
 ## Open Design Questions
 
-1. **Mutable methods:** Should traits support `ref Self` (mutable self)? Current design uses `in Self` (readonly).
-2. **Generic method parameters:** Can trait methods have their own generic parameters beyond `Self`?
 3. ~~**Partial default overrides:** Can an implementation override some default methods but inherit others?~~ → **Resolved in Phase 9:** Yes. Each default method is independently overridable.
-4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Partially addressed in Phase 11:** Same-project external type simulation covers the pattern. **Phase 12** will create separate projects to validate true cross-assembly code paths (source generator running in consuming assembly, trait metadata discovery across compilation boundaries).
+4. ~~**Cross-assembly trait inheritance:** Does trait inheritance work when base trait is in a different assembly?~~ → **Resolved in Phase 12:** Yes. Separate `TraitSharp.CrossAssembly.Traits` and `TraitSharp.CrossAssembly.Tests` projects validate true cross-assembly code paths. A `TraitDefaultBodyAttribute` metadata pipeline stores default body syntax in compiled assemblies, enabling the consuming assembly's source generator to emit default implementations. 22 cross-assembly tests pass covering property access, method dispatch, default method inheritance/override, three-level inheritance chains, layout casts, and generic algorithms across assembly boundaries.
+
+---
+
+## Nice-to-Have: Future Enhancements
+
+The following features are **deferred** — not required for current functionality. Both are ~3–4 day efforts with medium-high risk concentrated in the `DefaultBodyRewriter`. Will consider after benchmarks (Phase 13) confirm the performance story.
+
+| Feature | Complexity | Risk | Proposal |
+|---------|-----------|------|----------|
+| **Mutable Methods (`ref Self`)** — opt-in `ref Self` receiver for mutation-oriented patterns | ~3–4 days | Medium-High | [mutable-methods-proposal.md](proposals/mutable-methods-proposal.md) |
+| **Generic Method Parameters** — method-level type params beyond `Self`, e.g., `T Convert<T>()` | ~3–4 days | Medium-High | [generic-method-parameters-proposal.md](proposals/generic-method-parameters-proposal.md) |
