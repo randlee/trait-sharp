@@ -11,7 +11,7 @@ namespace TraitSharp.Benchmarks;
 [Config(typeof(FastBenchmarkConfig))]
 public class Sum1DBenchmarks : ArraySetupBase
 {
-    [Benchmark(Baseline = true)]
+    [Benchmark]
     public long NativeArray_Sum1D()
     {
         long sum = 0;
@@ -23,7 +23,7 @@ public class Sum1DBenchmarks : ArraySetupBase
         return sum;
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public long NativeSpan_Sum1D()
     {
         long sum = 0;
@@ -39,11 +39,21 @@ public class Sum1DBenchmarks : ArraySetupBase
     public long TraitSpan_Sum1D()
     {
         long sum = 0;
-        var span = _array.AsCoordinateSpan();
+        foreach (ref readonly var coord in _array.AsCoordinateSpan())
+        {
+            sum += coord.X + coord.Y;
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public long TraitNativeSpan_Sum1D()
+    {
+        long sum = 0;
+        ReadOnlySpan<CoordinateLayout> span = _array.AsCoordinateNativeSpan();
         for (int i = 0; i < span.Length; i++)
         {
-            ref readonly var coord = ref span[i];
-            sum += coord.X + coord.Y;
+            sum += span[i].X + span[i].Y;
         }
         return sum;
     }

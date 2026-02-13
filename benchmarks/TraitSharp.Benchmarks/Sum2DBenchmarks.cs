@@ -11,7 +11,7 @@ namespace TraitSharp.Benchmarks;
 [Config(typeof(FastBenchmarkConfig))]
 public class Sum2DBenchmarks : ArraySetupBase
 {
-    [Benchmark(Baseline = true)]
+    [Benchmark]
     public long NativeArray_Sum2D()
     {
         long sum = 0;
@@ -21,6 +21,22 @@ public class Sum2DBenchmarks : ArraySetupBase
             for (int col = 0; col < Width; col++)
             {
                 ref var pt = ref arr[row * Width + col];
+                sum += pt.X + pt.Y;
+            }
+        }
+        return sum;
+    }
+
+    [Benchmark(Baseline = true)]
+    public long NativeSpan_Sum2D()
+    {
+        long sum = 0;
+        Span<BenchmarkPoint> flat = _array.AsSpan();
+        for (int row = 0; row < Height; row++)
+        {
+            for (int col = 0; col < Width; col++)
+            {
+                ref var pt = ref flat[row * Width + col];
                 sum += pt.X + pt.Y;
             }
         }
@@ -50,10 +66,24 @@ public class Sum2DBenchmarks : ArraySetupBase
         var span2d = _array.AsCoordinateSpan2D(Width, Height);
         for (int row = 0; row < span2d.Height; row++)
         {
-            var rowSpan = span2d.GetRow(row);
-            for (int i = 0; i < rowSpan.Length; i++)
+            foreach (ref readonly var coord in span2d.GetRow(row))
             {
-                ref readonly var coord = ref rowSpan[i];
+                sum += coord.X + coord.Y;
+            }
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public long TraitNativeSpan_Sum2D()
+    {
+        long sum = 0;
+        ReadOnlySpan<CoordinateLayout> flat = _array.AsCoordinateNativeSpan();
+        for (int row = 0; row < Height; row++)
+        {
+            for (int col = 0; col < Width; col++)
+            {
+                ref readonly var coord = ref flat[row * Width + col];
                 sum += coord.X + coord.Y;
             }
         }

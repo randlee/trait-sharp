@@ -9,7 +9,7 @@ namespace TraitSharp.Runtime
     /// projected through a trait layout. Provides row/column indexing over
     /// data stored in row-major order.
     /// </summary>
-    [StructLayout(LayoutKind.Auto)]
+    [StructLayout(LayoutKind.Sequential)]
     public readonly ref struct ReadOnlyTraitSpan2D<TLayout>
         where TLayout : unmanaged
     {
@@ -74,6 +74,42 @@ namespace TraitSharp.Runtime
             get => _width == 0 || _height == 0;
         }
 
+        /// <summary>Gets whether the data is contiguous (stride equals layout size), enabling native Span operations and SIMD.</summary>
+        public bool IsContiguous
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _stride == Unsafe.SizeOf<TLayout>();
+        }
+
+        /// <summary>
+        /// Returns a native ReadOnlySpan&lt;TLayout&gt; over the same data when contiguous (row-major order).
+        /// Enables SIMD/Vector&lt;T&gt; operations via MemoryMarshal.Cast on the result.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Thrown when the data is not contiguous.</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlySpan<TLayout> AsNativeSpan()
+        {
+            if (_stride != Unsafe.SizeOf<TLayout>())
+                ThrowHelper.ThrowInvalidOperationException_NotContiguous();
+            return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
+        }
+
+        /// <summary>
+        /// Attempts to return a native ReadOnlySpan&lt;TLayout&gt; over the same data.
+        /// Returns true and sets result if the data is contiguous; false otherwise.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryAsNativeSpan(out ReadOnlySpan<TLayout> result)
+        {
+            if (_stride == Unsafe.SizeOf<TLayout>())
+            {
+                result = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
+                return true;
+            }
+            result = default;
+            return false;
+        }
+
         /// <summary>
         /// Returns a read-only reference to the element at (row, col).
         /// </summary>
@@ -88,6 +124,28 @@ namespace TraitSharp.Runtime
                     ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
                         (nint)(row * _rowStride + col * _stride)));
             }
+        }
+
+        /// <summary>
+        /// Returns a read-only reference to the element at (0,0) without bounds checking.
+        /// The caller is responsible for ensuring the span is non-empty.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly TLayout DangerousGetReference()
+        {
+            return ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference));
+        }
+
+        /// <summary>
+        /// Returns a read-only reference to the element at (row, col) without bounds checking.
+        /// The caller is responsible for ensuring the indices are within bounds.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref readonly TLayout DangerousGetReferenceAt(int row, int col)
+        {
+            return ref Unsafe.As<byte, TLayout>(
+                ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
+                    (nint)(row * _rowStride + col * _stride)));
         }
 
         /// <summary>

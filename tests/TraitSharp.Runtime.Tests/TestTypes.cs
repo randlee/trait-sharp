@@ -72,4 +72,18 @@ namespace TraitSharp.Runtime.Tests
         public int X, Y;
         public float Z;
     }
+
+    /// <summary>
+    /// Minimal 8-byte struct with [ImplementsTrait] for IPoint2D.
+    /// sizeof(SimplePoint) == sizeof(Point2DLayout) => contiguous (stride == layoutSize).
+    /// Used in native parity tests to verify AsNativeSpan and contiguous fast paths.
+    /// </summary>
+    [ImplementsTrait(typeof(IPoint2D))]
+    [StructLayout(LayoutKind.Sequential)]
+    public partial struct SimplePoint
+    {
+        public int X, Y;
+
+        public SimplePoint(int x, int y) { X = x; Y = y; }
+    }
 }
