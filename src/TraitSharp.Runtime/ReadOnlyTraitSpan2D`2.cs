@@ -5,45 +5,35 @@ using System.Runtime.InteropServices;
 namespace TraitSharp.Runtime
 {
     /// <summary>
-    /// A read-only 2D view over a contiguous region of unmanaged structs,
-    /// projected through a trait layout. Provides row/column indexing over
-    /// data stored in row-major order.
+    /// A high-performance read-only 2D view over a contiguous region of unmanaged structs,
+    /// projected through a trait layout with zero byte offset.
+    /// <para>
+    /// Unlike <see cref="ReadOnlyTraitSpan2D{TLayout}"/> which uses a runtime stride field,
+    /// this type preserves the source type <typeparamref name="TSource"/> as a generic parameter.
+    /// The JIT constant-folds <c>Unsafe.SizeOf&lt;TSource&gt;()</c>, producing optimal indexer code.
+    /// </para>
     /// </summary>
+    /// <typeparam name="TLayout">The trait layout struct type (the projected view).</typeparam>
+    /// <typeparam name="TSource">The source struct type (the backing data).</typeparam>
     [StructLayout(LayoutKind.Sequential)]
-    public readonly ref struct ReadOnlyTraitSpan2D<TLayout>
+    public readonly ref struct ReadOnlyTraitSpan2D<TLayout, TSource>
         where TLayout : unmanaged
+        where TSource : unmanaged
     {
-        private readonly ref byte _reference;
+        private readonly ref TSource _reference;
         private readonly int _width;
         private readonly int _height;
-        private readonly int _stride;      // bytes between successive source elements
-        private readonly int _rowStride;   // bytes between successive rows (stride * width)
 
         /// <summary>
-        /// Creates a ReadOnlyTraitSpan2D from a byte reference, stride, and dimensions.
+        /// Creates a ReadOnlyTraitSpan2D from a source reference and dimensions.
+        /// The trait layout must start at byte offset 0 within TSource.
         /// </summary>
-        /// <param name="reference">Reference to the first trait-view byte (base + offset of element 0).</param>
-        /// <param name="stride">Byte distance between successive source elements (sizeof source type).</param>
-        /// <param name="width">Number of columns.</param>
-        /// <param name="height">Number of rows.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ReadOnlyTraitSpan2D(ref byte reference, int stride, int width, int height)
+        public ReadOnlyTraitSpan2D(ref TSource reference, int width, int height)
         {
             _reference = ref reference;
-            _stride = stride;
             _width = width;
             _height = height;
-            _rowStride = stride * width;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal ReadOnlyTraitSpan2D(ref byte reference, int stride, int width, int height, int rowStride)
-        {
-            _reference = ref reference;
-            _stride = stride;
-            _width = width;
-            _height = height;
-            _rowStride = rowStride;
         }
 
         /// <summary>Gets the width (number of columns).</summary>
@@ -74,36 +64,36 @@ namespace TraitSharp.Runtime
             get => _width == 0 || _height == 0;
         }
 
-        /// <summary>Gets whether the data is contiguous (stride equals layout size), enabling native Span operations and SIMD.</summary>
+        /// <summary>Gets whether the data is contiguous (layout size equals source size).</summary>
         public bool IsContiguous
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _stride == Unsafe.SizeOf<TLayout>();
+            get => Unsafe.SizeOf<TSource>() == Unsafe.SizeOf<TLayout>();
         }
 
         /// <summary>
         /// Returns a native ReadOnlySpan&lt;TLayout&gt; over the same data when contiguous (row-major order).
-        /// Enables SIMD/Vector&lt;T&gt; operations via MemoryMarshal.Cast on the result.
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown when the data is not contiguous.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ReadOnlySpan<TLayout> AsNativeSpan()
         {
-            if (_stride != Unsafe.SizeOf<TLayout>())
+            if (Unsafe.SizeOf<TSource>() != Unsafe.SizeOf<TLayout>())
                 ThrowHelper.ThrowInvalidOperationException_NotContiguous();
-            return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
+            return MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<TSource, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
         }
 
         /// <summary>
         /// Attempts to return a native ReadOnlySpan&lt;TLayout&gt; over the same data.
-        /// Returns true and sets result if the data is contiguous; false otherwise.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryAsNativeSpan(out ReadOnlySpan<TLayout> result)
         {
-            if (_stride == Unsafe.SizeOf<TLayout>())
+            if (Unsafe.SizeOf<TSource>() == Unsafe.SizeOf<TLayout>())
             {
-                result = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
+                result = MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<TSource, TLayout>(ref Unsafe.AsRef(in _reference)), _width * _height);
                 return true;
             }
             result = default;
@@ -112,6 +102,7 @@ namespace TraitSharp.Runtime
 
         /// <summary>
         /// Returns a read-only reference to the element at (row, col).
+        /// Uses Unsafe.Add&lt;TSource&gt; so the JIT constant-folds the element stride.
         /// </summary>
         public ref readonly TLayout this[int row, int col]
         {
@@ -120,50 +111,61 @@ namespace TraitSharp.Runtime
             {
                 if ((uint)row >= (uint)_height || (uint)col >= (uint)_width)
                     ThrowHelper.ThrowIndexOutOfRangeException();
-                return ref Unsafe.As<byte, TLayout>(
-                    ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
-                        (nint)(row * _rowStride + col * _stride)));
+                return ref Unsafe.As<TSource, TLayout>(
+                    ref Unsafe.Add(ref Unsafe.AsRef(in _reference), row * _width + col));
             }
         }
 
         /// <summary>
         /// Returns a read-only reference to the element at (0,0) without bounds checking.
-        /// The caller is responsible for ensuring the span is non-empty.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref readonly TLayout DangerousGetReference()
         {
-            return ref Unsafe.As<byte, TLayout>(ref Unsafe.AsRef(in _reference));
+            return ref Unsafe.As<TSource, TLayout>(ref Unsafe.AsRef(in _reference));
         }
 
         /// <summary>
         /// Returns a read-only reference to the element at (row, col) without bounds checking.
-        /// The caller is responsible for ensuring the indices are within bounds.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref readonly TLayout DangerousGetReferenceAt(int row, int col)
         {
-            return ref Unsafe.As<byte, TLayout>(
-                ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
-                    (nint)(row * _rowStride + col * _stride)));
+            return ref Unsafe.As<TSource, TLayout>(
+                ref Unsafe.Add(ref Unsafe.AsRef(in _reference), row * _width + col));
         }
 
         /// <summary>
         /// Gets a single row as a ReadOnlyTraitSpan.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ReadOnlyTraitSpan<TLayout> GetRow(int row)
+        public ReadOnlyTraitSpan<TLayout, TSource> GetRow(int row)
         {
             if ((uint)row >= (uint)_height)
                 ThrowHelper.ThrowArgumentOutOfRangeException();
-            return new ReadOnlyTraitSpan<TLayout>(
-                ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference), (nint)(row * _rowStride)),
-                _stride,
+            return new ReadOnlyTraitSpan<TLayout, TSource>(
+                ref Unsafe.Add(ref Unsafe.AsRef(in _reference), row * _width),
                 _width);
         }
 
         /// <summary>
         /// Gets a sub-region of this 2D span.
+        /// Full-width slices return the optimized two-parameter form.
+        /// Sub-column slices fall back to the strided single-parameter form.
+        /// </summary>
+        public ReadOnlyTraitSpan2D<TLayout, TSource> SliceRows(int rowStart, int height)
+        {
+            if ((uint)rowStart > (uint)_height || (uint)height > (uint)(_height - rowStart))
+                ThrowHelper.ThrowArgumentOutOfRangeException();
+            return new ReadOnlyTraitSpan2D<TLayout, TSource>(
+                ref Unsafe.Add(ref Unsafe.AsRef(in _reference), rowStart * _width),
+                _width,
+                height);
+        }
+
+        /// <summary>
+        /// Gets a sub-region of this 2D span.
+        /// Returns the strided single-parameter form to support arbitrary sub-column slicing.
         /// </summary>
         public ReadOnlyTraitSpan2D<TLayout> Slice(int rowStart, int colStart, int height, int width)
         {
@@ -171,21 +173,23 @@ namespace TraitSharp.Runtime
                 ThrowHelper.ThrowArgumentOutOfRangeException();
             if ((uint)colStart > (uint)_width || (uint)width > (uint)(_width - colStart))
                 ThrowHelper.ThrowArgumentOutOfRangeException();
+            int stride = Unsafe.SizeOf<TSource>();
+            int rowStride = _width * stride;
             return new ReadOnlyTraitSpan2D<TLayout>(
-                ref Unsafe.AddByteOffset(ref Unsafe.AsRef(in _reference),
-                    (nint)(rowStart * _rowStride + colStart * _stride)),
-                _stride,
+                ref Unsafe.AddByteOffset(ref Unsafe.As<TSource, byte>(ref Unsafe.AsRef(in _reference)),
+                    (nint)(rowStart * rowStride + colStart * stride)),
+                stride,
                 width,
                 height,
-                _rowStride);
+                rowStride);
         }
 
         /// <summary>
         /// Flattens to a 1D ReadOnlyTraitSpan (row-major order).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ReadOnlyTraitSpan<TLayout> AsSpan() =>
-            new(ref Unsafe.AsRef(in _reference), _stride, _width * _height);
+        public ReadOnlyTraitSpan<TLayout, TSource> AsSpan() =>
+            new(ref Unsafe.AsRef(in _reference), _width * _height);
 
         /// <summary>Enumerates rows.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -194,11 +198,11 @@ namespace TraitSharp.Runtime
         /// <summary>Enumerates rows of a ReadOnlyTraitSpan2D.</summary>
         public ref struct RowEnumerator
         {
-            private readonly ReadOnlyTraitSpan2D<TLayout> _span;
+            private readonly ReadOnlyTraitSpan2D<TLayout, TSource> _span;
             private int _row;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            internal RowEnumerator(ReadOnlyTraitSpan2D<TLayout> span)
+            internal RowEnumerator(ReadOnlyTraitSpan2D<TLayout, TSource> span)
             {
                 _span = span;
                 _row = -1;
@@ -209,7 +213,7 @@ namespace TraitSharp.Runtime
             public bool MoveNext() => ++_row < _span._height;
 
             /// <summary>Gets the row at the current position of the enumerator.</summary>
-            public ReadOnlyTraitSpan<TLayout> Current
+            public ReadOnlyTraitSpan<TLayout, TSource> Current
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get => _span.GetRow(_row);
@@ -220,7 +224,17 @@ namespace TraitSharp.Runtime
             public RowEnumerator GetEnumerator() => this;
         }
 
+        /// <summary>
+        /// Converts to the strided single-parameter 2D form.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static implicit operator ReadOnlyTraitSpan2D<TLayout>(ReadOnlyTraitSpan2D<TLayout, TSource> span) =>
+            new(ref Unsafe.As<TSource, byte>(ref Unsafe.AsRef(in span._reference)),
+                Unsafe.SizeOf<TSource>(),
+                span._width,
+                span._height);
+
         /// <summary>Returns an empty ReadOnlyTraitSpan2D.</summary>
-        public static ReadOnlyTraitSpan2D<TLayout> Empty => default;
+        public static ReadOnlyTraitSpan2D<TLayout, TSource> Empty => default;
     }
 }
