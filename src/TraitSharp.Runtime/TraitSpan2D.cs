@@ -74,6 +74,20 @@ namespace TraitSharp.Runtime
             get => _width == 0 || _height == 0;
         }
 
+        /// <summary>Gets the stride (byte distance between successive source elements).</summary>
+        public int Stride
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _stride;
+        }
+
+        /// <summary>Gets the pitch (byte distance between the start of successive rows).</summary>
+        public int Pitch
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _rowStride;
+        }
+
         /// <summary>Gets whether the data is contiguous (stride equals layout size), enabling native Span operations and SIMD.</summary>
         public bool IsContiguous
         {

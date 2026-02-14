@@ -64,6 +64,20 @@ namespace TraitSharp.Runtime
             get => _width == 0 || _height == 0;
         }
 
+        /// <summary>Gets the stride (byte distance between successive source elements). JIT constant-folded.</summary>
+        public int Stride
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => Unsafe.SizeOf<TSource>();
+        }
+
+        /// <summary>Gets the pitch (byte distance between the start of successive rows). JIT constant-folded.</summary>
+        public int Pitch
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => Unsafe.SizeOf<TSource>() * _width;
+        }
+
         /// <summary>Gets whether the data is contiguous (layout size equals source size).</summary>
         public bool IsContiguous
         {

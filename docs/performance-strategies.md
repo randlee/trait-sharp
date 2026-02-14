@@ -34,13 +34,50 @@ TraitSharp provides **8 ref struct types** organized in two tiers:
 
 **Mutable / Read-Only**: Every strategy described below applies identically to both mutable and read-only variants unless explicitly noted. The only difference is `ref` vs `ref readonly` on return types.
 
+### Terminology: Stride vs Pitch
+
+| Term | Meaning | Applies To |
+|------|---------|------------|
+| **Stride** | Byte distance between successive source *elements* (i.e. `sizeof(TSource)`) | All span types (1D and 2D) |
+| **Pitch** | Byte distance between the start of successive *rows* (i.e. `stride × width`) | 2D span types only |
+
+This follows the convention used by CommunityToolkit.HighPerformance's `Span2D<T>`, where "pitch" is the row-to-row byte offset. In a contiguous full-width 2D view, `pitch == stride × width`. After a sub-column `Slice`, pitch may be larger than `stride × width` because rows include skipped columns.
+
 ### Field Layout Comparison
 
-| | Two-Parameter (`<TLayout, TSource>`) | Single-Parameter (`<TLayout>`) |
+Fields are listed in struct declaration order (`[StructLayout(LayoutKind.Sequential)]`).
+
+**1D Types** — `ReadOnlyTraitSpan<T>` / `TraitSpan<T>` and `ReadOnlyTraitSpan<T,S>` / `TraitSpan<T,S>`:
+
+| # | Two-Parameter (`<TLayout, TSource>`) | Single-Parameter (`<TLayout>`) |
+|---|--------------------------------------|--------------------------------|
+| 1 | `ref TSource _reference` | `ref byte _reference` |
+| 2 | `int _length` | `int _stride` |
+| 3 | — | `int _length` |
+| **Public** | `Length`, `Stride`¹, `IsEmpty`, `IsContiguous` | `Length`, `Stride`, `IsEmpty`, `IsContiguous` |
+
+¹ Returns `Unsafe.SizeOf<TSource>()` — JIT constant-folded, no field storage.
+
+**2D Types** — `ReadOnlyTraitSpan2D<T>` / `TraitSpan2D<T>` and `ReadOnlyTraitSpan2D<T,S>` / `TraitSpan2D<T,S>`:
+
+| # | Two-Parameter (`<TLayout, TSource>`) | Single-Parameter (`<TLayout>`) |
+|---|--------------------------------------|--------------------------------|
+| 1 | `ref TSource _reference` | `ref byte _reference` |
+| 2 | `int _width` | `int _width` |
+| 3 | `int _height` | `int _height` |
+| 4 | — | `int _stride` *(element stride)* |
+| 5 | — | `int _rowStride` *(pitch — row stride)* |
+| **Public** | `Width`, `Height`, `Length`, `Stride`¹, `Pitch`², `IsEmpty`, `IsContiguous` | `Width`, `Height`, `Length`, `Stride`, `Pitch`, `IsEmpty`, `IsContiguous` |
+
+¹ Returns `Unsafe.SizeOf<TSource>()` — JIT constant-folded, no field storage.
+² Returns `Unsafe.SizeOf<TSource>() * _width` — JIT constant-folds the element size; only `_width` is a runtime value.
+
+**Stride source comparison:**
+
+| | Two-Parameter | Single-Parameter |
 |---|---|---|
-| **1D Fields** | `ref TSource _reference`, `int _length` | `ref byte _reference`, `int _stride`, `int _length` |
-| **2D Fields** | `ref TSource _reference`, `int _width`, `int _height` | `ref byte _reference`, `int _stride`, `int _width`, `int _height`, `int _rowStride` |
-| **Stride Source** | JIT constant: `Unsafe.SizeOf<TSource>()` | Runtime field: `_stride` |
+| **Stride** | JIT constant: `Unsafe.SizeOf<TSource>()` | Runtime field: `_stride` |
+| **Pitch** | JIT-assisted: `Unsafe.SizeOf<TSource>() * _width` | Runtime field: `_rowStride` |
 
 ---
 
@@ -224,13 +261,13 @@ for (int row = 0; row < span2d.Height; row++)
 
 ### S9: Slice Type Preservation
 
-**Problem**: Slicing a two-parameter 2D span by arbitrary sub-columns would require storing a row stride different from `width * sizeof(TSource)`, breaking the JIT constant-folding advantage.
+**Problem**: Slicing a two-parameter 2D span by arbitrary sub-columns would require storing a pitch different from `width * sizeof(TSource)`, breaking the JIT constant-folding advantage.
 
 **Strategy**: Two distinct slice methods:
 
 1. **`SliceRows(rowStart, height)`** — returns the same two-parameter type (`TraitSpan2D<TLayout, TSource>`). This preserves all JIT optimizations because the result is still full-width contiguous rows.
 
-2. **`Slice(rowStart, colStart, height, width)`** — returns the single-parameter strided type (`TraitSpan2D<TLayout>`). This handles arbitrary sub-column regions where a custom `_rowStride` is needed and JIT constant folding is not possible.
+2. **`Slice(rowStart, colStart, height, width)`** — returns the single-parameter strided type (`TraitSpan2D<TLayout>`). This handles arbitrary sub-column regions where pitch differs from `stride × width` and JIT constant folding is not possible.
 
 **Design rationale**: Rather than always returning the strided form (losing optimization) or refusing sub-column slicing (losing functionality), the API offers both. Users who know they're slicing full rows get optimal performance automatically.
 
@@ -273,8 +310,8 @@ Applies to all four 2D types: `ReadOnlyTraitSpan2D<TLayout>`, `TraitSpan2D<TLayo
 
 | Method | Strategies | Notes |
 |--------|-----------|-------|
-| **Constructor** | — | Two-param: `(ref TSource, int width, int height)`. Single-param: `(ref byte, int stride, int width, int height)` with computed `_rowStride`. |
-| **`this[int row, int col]`** (2D Indexer) | S1, S4, S5 | Two-param: `Unsafe.Add<TSource>(ref, row * _width + col)`. Single-param: `Unsafe.AddByteOffset(ref, row * _rowStride + col * _stride)`. Two bounds checks (row + col). |
+| **Constructor** | — | Two-param: `(ref TSource, int width, int height)`. Single-param: `(ref byte, int stride, int width, int height)` with computed pitch (`_rowStride = stride × width`). |
+| **`this[int row, int col]`** (2D Indexer) | S1, S4, S5 | Two-param: `Unsafe.Add<TSource>(ref, row * _width + col)`. Single-param: `Unsafe.AddByteOffset(ref, row * pitch + col * stride)`. Two bounds checks (row + col). |
 | **`DangerousGetReference()`** | S1 | No bounds check. Element at (0,0). |
 | **`DangerousGetReferenceAt(int, int)`** | S1 | No bounds check. Flat-index or byte-offset computation. |
 | **`GetRow(int row)`** | S1, S4, S5, S7 | Returns 1D span for the row. Two-param returns `TraitSpan<TLayout, TSource>`. Single-param returns `TraitSpan<TLayout>` with `_stride`. |
@@ -286,7 +323,7 @@ Applies to all four 2D types: `ReadOnlyTraitSpan2D<TLayout>`, `TraitSpan2D<TLayo
 | **`Fill(TLayout)`** | S7, S8 | Mutable types only. Iterates rows via `GetRow`, each row's `Fill` checks contiguity. |
 | **`Clear()`** | S7, S8 | Delegates to `Fill(default)`. |
 | **`EnumerateRows()`** | S7 | Returns `RowEnumerator`. Each `Current` calls `GetRow`. |
-| **Properties** (`Width`, `Height`, `Length`, `IsEmpty`, `IsContiguous`) | — | Trivial field reads or computations. |
+| **Properties** (`Width`, `Height`, `Length`, `Stride`, `Pitch`, `IsEmpty`, `IsContiguous`) | S1 | `Stride`: element byte distance (JIT constant on two-param). `Pitch`: row byte distance (JIT-assisted on two-param). Others are trivial field reads. |
 | **Implicit conversions** | — | Two-param → single-param (strided): provides `Unsafe.SizeOf<TSource>()` as stride. Mutable → read-only. |
 | **`Empty`** | — | Returns `default`. |
 
