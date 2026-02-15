@@ -96,7 +96,7 @@ Fields are listed in struct declaration order (`[StructLayout(LayoutKind.Sequent
 **Where NOT applied**:
 - Single-parameter types — `TSource` is erased, so `_stride` must be a runtime field. These types exist for generic/type-erased scenarios where the source type is unknown.
 
-**Measured impact**: Two-parameter 1D foreach is **4% faster than native `Span<T>`** (161.1 μs vs 174.3 μs). Indexer access is within 9% of native span.
+**Measured impact**: Two-parameter 1D foreach achieves **parity with native `Span<T>`** (167.2 μs vs 167.0 μs). Indexer access is within 8% of native span.
 
 ### S2: Pointer-Increment Enumeration
 
@@ -240,7 +240,7 @@ for (int row = 0; row < span2d.Height; row++)
 }
 ```
 
-**Why this matters**: The 2D indexer has ~26-28% overhead vs native span due to double bounds checks. Row decomposition reduces this to **parity or better** (1.01x–1.08x faster than the native span baseline in benchmarks).
+**Why this matters**: The 2D indexer has ~22-30% overhead vs native span due to double bounds checks. Row decomposition reduces this to **parity or better** (1.01x–1.09x faster than the native span baseline in benchmarks).
 
 **Where applied**: `GetRow()` on all four 2D types. `EnumerateRows()` / `RowEnumerator` for convenient `foreach` over rows.
 
@@ -372,46 +372,46 @@ All benchmarks run on Apple M4 Max, .NET 8.0, BenchmarkDotNet v0.14.0.
 
 | Method | Time | vs Baseline | Strategies Demonstrated |
 |--------|------|-------------|------------------------|
-| NativeSpan_Sum1D (baseline) | 174.3 μs | — | — |
-| TraitSpan_Foreach | 167.3 μs | **1.04x faster** | S1, S2 |
-| TraitSpan_Indexer | 190.4 μs | 1.09x slower | S1, S4 |
-| TraitNativeSpan_Sum1D | 173.6 μs | **1.00x (parity)** | S3 |
+| NativeSpan_Sum1D (baseline) | 167.0 μs | — | — |
+| TraitSpan_Foreach | 167.2 μs | **1.00x (parity)** | S1, S2 |
+| TraitSpan_Indexer | 180.2 μs | 1.08x slower | S1, S4 |
+| TraitNativeSpan_Sum1D | 174.0 μs | 1.04x slower | S3 |
 
 ### 2D Same-Size Layout (BenchmarkPoint)
 
 | Method | Time | vs Baseline | Strategies Demonstrated |
 |--------|------|-------------|------------------------|
-| NativeSpan_Sum2D (baseline) | 174.3 μs | — | — |
-| TraitSpan2D_Sum2D (2D indexer) | 222.3 μs | 1.28x slower | S1, S4 (double bounds check) |
-| TraitSpan2D_RowSum | 161.1 μs | **1.08x faster** | S1, S2, S7 |
-| TraitNativeSpan_Sum2D | 172.5 μs | **1.01x faster** | S3 |
+| NativeSpan_Sum2D (baseline) | 178.3 μs | — | — |
+| TraitSpan2D_Sum2D (2D indexer) | 232.6 μs | 1.30x slower | S1, S4 (double bounds check) |
+| TraitSpan2D_RowSum | 163.7 μs | **1.09x faster** | S1, S2, S7 |
+| TraitNativeSpan_Sum2D | 178.3 μs | **1.00x (parity)** | S3 |
 
 ### 1D Strided Layout (BenchmarkRect — `sizeof(TSource) > sizeof(TLayout)`)
 
 | Method | Time | vs Baseline | Strategies Demonstrated |
 |--------|------|-------------|------------------------|
-| NativeSpan_CoordSum1D (baseline) | 165.1 μs | — | — |
-| TraitSpan_CoordSum1D | 172.2 μs | 1.04x slower | S1 (strided, larger struct) |
-| NativeSpan_SizeSum1D | 152.9 μs | 1.08x faster | Different trait view |
-| TraitSpan_SizeSum1D | 172.8 μs | 1.05x slower | S1 (strided, larger struct) |
-| TraitSpan_BothSum1D (dual spans) | 249.0 μs | 1.51x slower | Doubled cache misses |
+| NativeSpan_CoordSum1D (baseline) | 175.0 μs | — | — |
+| TraitSpan_CoordSum1D | 180.5 μs | 1.03x slower | S1 (strided, larger struct) |
+| NativeSpan_SizeSum1D | 164.9 μs | 1.06x faster | Different trait view |
+| TraitSpan_SizeSum1D | 188.6 μs | 1.08x slower | S1 (strided, larger struct) |
+| TraitSpan_BothSum1D (dual spans) | 280.2 μs | 1.60x slower | Doubled cache misses |
 
 ### 2D Strided Layout (BenchmarkRect)
 
 | Method | Time | vs Baseline | Strategies Demonstrated |
 |--------|------|-------------|------------------------|
-| NativeSpan_CoordSum2D (baseline) | 176.6 μs | — | — |
-| TraitSpan2D_CoordSum2D (2D indexer) | 221.7 μs | 1.26x slower | S4 (double bounds check) |
-| TraitSpan2D_CoordRowSum | 179.1 μs | **1.01x (parity)** | S1, S2, S7 |
-| TraitSpan2D_BothSum2D (dual spans) | 324.6 μs | 1.84x slower | Doubled cache misses |
+| NativeSpan_CoordSum2D (baseline) | 186.8 μs | — | — |
+| TraitSpan2D_CoordSum2D (2D indexer) | 228.5 μs | 1.22x slower | S4 (double bounds check) |
+| TraitSpan2D_CoordRowSum | 189.1 μs | **1.01x (parity)** | S1, S2, S7 |
+| TraitSpan2D_BothSum2D (dual spans) | 363.3 μs | 1.95x slower | Doubled cache misses |
 
 ### Key Takeaways
 
 1. **`foreach` / `GetRow` iteration achieves parity or better** — use S1 + S2 + S7 as the default pattern.
 2. **`AsNativeSpan()` achieves exact parity** — use S3 when layout sizes match.
-3. **2D indexer has ~26-28% overhead** — inherent to double bounds checking. Use row decomposition (S7) when iterating.
-4. **Dual-span iteration has 50-84% overhead** — caused by doubled cache misses from two interleaved trait views over the same array. This is a fundamental cache-line effect, not a strategy failure.
-5. **Strided access (larger source struct) adds ~4-5% overhead** vs same-size layout — the JIT constant-folds the stride but the larger element size reduces cache efficiency.
+3. **2D indexer has ~22-30% overhead** — inherent to double bounds checking. Use row decomposition (S7) when iterating.
+4. **Dual-span iteration has 60-95% overhead** — caused by doubled cache misses from two interleaved trait views over the same array. This is a fundamental cache-line effect, not a strategy failure.
+5. **Strided access (larger source struct) adds ~3-8% overhead** vs same-size layout — the JIT constant-folds the stride but the larger element size reduces cache efficiency.
 
 ### Recommended Access Patterns (Fastest → Slowest)
 
@@ -420,6 +420,6 @@ All benchmarks run on Apple M4 Max, .NET 8.0, BenchmarkDotNet v0.14.0.
 | `AsNativeSpan()` + native iteration | Exact parity |
 | `foreach` on 1D TraitSpan | Parity or faster |
 | `GetRow()` + `foreach` on 2D | Parity |
-| 1D indexer loop | ~9% overhead |
-| 2D indexer loop | ~26-28% overhead |
-| Dual trait spans over same array | ~50-84% overhead (cache effect) |
+| 1D indexer loop | ~8% overhead |
+| 2D indexer loop | ~22-30% overhead |
+| Dual trait spans over same array | ~60-95% overhead (cache effect) |

@@ -234,64 +234,50 @@ TraitSharp uses a Roslyn source generator to bring Rust-like trait semantics to 
 
 ## Performance
 
-All benchmarks run on **Apple M4 Max / .NET 8.0 / Arm64 RyuJIT AdvSIMD** with
-**480,000 elements** (800 x 600). Full source in [`benchmarks/`](benchmarks/).
+Benchmarked on Apple M4 Max, .NET 8.0.20, Arm64 RyuJIT AdvSIMD. All tests use 1M elements (1000×1000 for 2D).
 
-### 1D Iteration — `BenchmarkPoint` (8 bytes: X, Y as int)
+### 1D Span — Same-Size Layout
 
-Trait view of the same struct type. TraitSpan accesses only the trait fields via strided pointer arithmetic.
+| Method | Mean | vs Baseline | Alloc |
+|--------|------|-------------|-------|
+| NativeSpan (baseline) | 167.0 μs | — | — |
+| TraitSpan foreach | 167.2 μs | **1.00x (parity)** | — |
+| TraitSpan indexer | 180.2 μs | 1.08x slower | — |
+| AsNativeSpan escape | 174.0 μs | 1.04x slower | — |
 
-| Method | Mean | Ratio | Allocated |
-|---|---:|---:|---:|
-| NativeArray_Sum1D | 171.9 us | 1.05x slower | 0 B |
-| NativeSpan_Sum1D | 163.4 us | baseline | 0 B |
-| **TraitSpan_Sum1D** | **143.8 us** | **1.14x faster** | **0 B** |
-| TraitNativeSpan_Sum1D | 163.3 us | 1.00x | 0 B |
+### 2D Span — Same-Size Layout
 
-> TraitSpan is _faster_ than native `Span<T>` because it strides over only the trait fields, improving cache utilization when the struct has extra data.
+| Method | Mean | vs Baseline | Alloc |
+|--------|------|-------------|-------|
+| NativeSpan (baseline) | 178.3 μs | — | — |
+| TraitSpan2D indexer | 232.6 μs | 1.30x slower | — |
+| GetRow + foreach | 163.7 μs | **1.09x faster** | — |
+| AsNativeSpan escape | 178.3 μs | **1.00x (parity)** | — |
 
-### 2D Iteration — `BenchmarkPoint` (800 x 600 grid)
+### 1D Span — Strided Layout (larger source struct)
 
-| Method | Mean | Ratio | Allocated |
-|---|---:|---:|---:|
-| NativeArray_Sum2D | 193.1 us | 1.11x slower | 0 B |
-| NativeSpan_Sum2D | 173.5 us | baseline | 0 B |
-| TraitSpan2D_Sum2D | 237.8 us | 1.37x slower | 0 B |
-| **TraitSpan2D_RowSum** | **147.3 us** | **1.18x faster** | **0 B** |
-| TraitNativeSpan_Sum2D | 173.9 us | 1.00x | 0 B |
+| Method | Mean | vs Baseline | Alloc |
+|--------|------|-------------|-------|
+| NativeSpan Coord (baseline) | 175.0 μs | — | — |
+| TraitSpan Coord | 180.5 μs | 1.03x slower | — |
+| TraitSpan Both (dual spans) | 280.2 μs | 1.60x slower | — |
 
-> Row-based iteration (`GetRow()`) matches or beats native span by leveraging contiguous row access.
+### 2D Span — Strided Layout (larger source struct)
 
-### 1D Multi-Trait — `BenchmarkRect` (16 bytes: X, Y, Width, Height)
-
-Accessing _different trait views_ of the same struct. Each TraitSpan reads only its trait's fields.
-
-| Method | Mean | Ratio | Allocated |
-|---|---:|---:|---:|
-| NativeArray_Sum1D | 245.2 us | baseline | 0 B |
-| NativeSpan_Sum1D | 197.8 us | 1.24x faster | 0 B |
-| **TraitSpan_CoordSum1D** | **172.5 us** | **1.42x faster** | **0 B** |
-| **TraitSpan_SizeSum1D** | **171.0 us** | **1.43x faster** | **0 B** |
-| TraitSpan_BothSum1D | 244.0 us | 1.00x | 0 B |
-
-> Individual trait views (Coord-only or Size-only) are faster than reading the full struct because they access fewer bytes per element.
-
-### 2D Multi-Trait — `BenchmarkRect` (800 x 600 grid)
-
-| Method | Mean | Ratio | Allocated |
-|---|---:|---:|---:|
-| NativeArray_Sum2D | 246.5 us | baseline | 0 B |
-| TraitSpan2D_CoordSum2D | 235.3 us | 1.05x faster | 0 B |
-| **TraitSpan2D_CoordRowSum** | **175.9 us** | **1.40x faster** | **0 B** |
-
-> Row iteration with multi-trait views gives 40% speedup over native array access.
+| Method | Mean | vs Baseline | Alloc |
+|--------|------|-------------|-------|
+| NativeSpan Coord (baseline) | 186.8 μs | — | — |
+| TraitSpan2D Coord | 228.5 μs | 1.22x slower | — |
+| GetRow + foreach | 189.1 μs | **1.01x (parity)** | — |
+| TraitSpan2D Both (dual spans) | 363.3 μs | 1.95x slower | — |
 
 ### Key Takeaways
 
-- **Zero allocations** across all access patterns — no boxing, no copying
-- **TraitSpan 1D** often _faster_ than native span when the struct has extra fields
-- **Row-based 2D** iteration matches or exceeds native span performance
-- **Multi-trait views** let you access only the fields you need, improving cache efficiency
+- **`foreach` / `GetRow` iteration achieves parity or better** — recommended default pattern
+- **`AsNativeSpan()` achieves exact parity** — use when layout sizes match
+- **2D indexer has ~22-30% overhead** — use row decomposition (`GetRow`) when iterating
+- **Dual-span iteration has 60-95% overhead** — fundamental cache-line effect from interleaved views
+- **Zero heap allocations** across all span access patterns
 
 ## Packages
 
