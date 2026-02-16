@@ -7,22 +7,22 @@
     "elementSize": 16,
     "arrayLength": 480000,
     "totalBytes": 7680000,
-    "timestamp": "2026-02-16T15:30:00Z",
+    "timestamp": "2026-02-16T22:30:00Z",
     "environment": {
+      "os": "macOS 15.3.1",
+      "osSlug": "macos",
       "cpu": "Apple M4 Max",
       "cpuId": "apple-m4-max",
-      "os": "macOS 15.3.1 (24D70)",
-      "osSlug": "macos",
-      "arch": "ARM64",
+      "coresLogical": 16,
       "dotnetSdk": "9.0.200",
-      "runtime": ".NET 9.0.2 (9.0.225.6610), Arm64 RyuJIT AdvSIMD",
-      "benchmarkDotNet": "v0.14.0"
+      "runtime": ".NET 9.0.2",
+      "benchmarkDotNet": "0.14.0"
     }
   },
   "comparisonGroups": [
     {
       "id": "rect-2d-coord-foreach",
-      "name": "2D Coordinate Row foreach \u2014 Primary (X + Y)",
+      "name": "2D Coordinate Row foreach \u2014 X + Y",
       "description": "Sum X + Y using row-slice foreach. Native Span uses Slice+foreach; TraitSpan2D uses GetRow+foreach with pointer-increment cursors.",
       "baseline": "NativeSpan_RowSlice_CoordSum2D",
       "methods": [
@@ -32,9 +32,9 @@
           "codeSnippet": "for (int row = 0; row < Height; row++)\n    foreach (ref var r in flat.Slice(row * Width, Width))\n        sum += r.X + r.Y;",
           "isBaseline": true,
           "mean_us": 157.2,
-          "error_us": 0.38,
-          "stddev_us": 0.51,
-          "gbPerSec": 9.36,
+          "error_us": 0.3,
+          "stddev_us": 0.16,
+          "gbPerSec": 46.63,
           "allocated": 0
         },
         {
@@ -43,28 +43,17 @@
           "codeSnippet": "for (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;",
           "isBaseline": false,
           "mean_us": 157.7,
-          "error_us": 1.22,
-          "stddev_us": 1.63,
-          "gbPerSec": 9.33,
-          "allocated": 0
-        },
-        {
-          "name": "TraitSpan2D_Indexer_CoordSum2D",
-          "label": "TraitSpan2D [row, col] Indexer (reference)",
-          "codeSnippet": "for (int row = 0; row < span2d.Height; row++)\n    for (int col = 0; col < span2d.Width; col++)\n        sum += span2d[row, col].X + span2d[row, col].Y;",
-          "isBaseline": false,
-          "mean_us": 319.1,
-          "error_us": 3.95,
-          "stddev_us": 5.26,
-          "gbPerSec": 4.61,
+          "error_us": 0.28,
+          "stddev_us": 0.15,
+          "gbPerSec": 46.48,
           "allocated": 0
         }
       ]
     },
     {
       "id": "rect-2d-all-fields",
-      "name": "2D All Fields \u2014 Dual Trait Row foreach",
-      "description": "Sum all 4 fields using row-based iteration. Compares native Slice+foreach, Zip row enumerator (fused pointer walk), and dual 2D indexer access.",
+      "name": "2D All Fields \u2014 Row foreach (X + Y + Width + Height)",
+      "description": "Sum all 4 fields using row-based iteration. Compares native Slice+foreach, Zip row enumerator (fused dual-pointer walk per row), and dual 2D indexer.",
       "baseline": "NativeSpan_RowSlice_AllFieldsSum2D",
       "methods": [
         {
@@ -73,9 +62,9 @@
           "codeSnippet": "for (int row = 0; row < Height; row++)\n    foreach (ref var r in flat.Slice(row * Width, Width))\n        sum += r.X + r.Y + r.Width + r.Height;",
           "isBaseline": true,
           "mean_us": 195.3,
-          "error_us": 0.6,
-          "stddev_us": 0.8,
-          "gbPerSec": 7.53,
+          "error_us": 0.4,
+          "stddev_us": 0.22,
+          "gbPerSec": 37.53,
           "allocated": 0
         },
         {
@@ -84,9 +73,9 @@
           "codeSnippet": "var coordRow = coordSpan.GetRow(row);\nvar sizeRow = sizeSpan.GetRow(row);\nforeach (var pair in coordRow.Zip(sizeRow))\n    sum += pair.First.X + ... + pair.Second.Width + ...;",
           "isBaseline": false,
           "mean_us": 244.1,
-          "error_us": 3.01,
-          "stddev_us": 4.01,
-          "gbPerSec": 6.03,
+          "error_us": 0.55,
+          "stddev_us": 0.3,
+          "gbPerSec": 30.03,
           "allocated": 0
         },
         {
@@ -95,9 +84,9 @@
           "codeSnippet": "for (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += coordSpan[row,col].X + ... + sizeSpan[row,col].Width + ...;",
           "isBaseline": false,
           "mean_us": 393.0,
-          "error_us": 2.41,
-          "stddev_us": 3.21,
-          "gbPerSec": 3.74,
+          "error_us": 0.8,
+          "stddev_us": 0.44,
+          "gbPerSec": 18.66,
           "allocated": 0
         }
       ]

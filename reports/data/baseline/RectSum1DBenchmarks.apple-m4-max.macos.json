@@ -7,22 +7,22 @@
     "elementSize": 16,
     "arrayLength": 480000,
     "totalBytes": 7680000,
-    "timestamp": "2026-02-16T15:30:00Z",
+    "timestamp": "2026-02-16T22:30:00Z",
     "environment": {
+      "os": "macOS 15.3.1",
+      "osSlug": "macos",
       "cpu": "Apple M4 Max",
       "cpuId": "apple-m4-max",
-      "os": "macOS 15.3.1 (24D70)",
-      "osSlug": "macos",
-      "arch": "ARM64",
+      "coresLogical": 16,
       "dotnetSdk": "9.0.200",
-      "runtime": ".NET 9.0.2 (9.0.225.6610), Arm64 RyuJIT AdvSIMD",
-      "benchmarkDotNet": "v0.14.0"
+      "runtime": ".NET 9.0.2",
+      "benchmarkDotNet": "0.14.0"
     }
   },
   "comparisonGroups": [
     {
       "id": "rect-1d-coord-foreach",
-      "name": "Coordinate foreach \u2014 Primary (X + Y)",
+      "name": "Coordinate foreach \u2014 X + Y",
       "description": "Sum X + Y using foreach. Coordinate trait at offset 0. Native Span foreach returns ref BenchmarkRect; TraitSpan foreach uses pointer-increment cursor striding 16 bytes per step.",
       "baseline": "NativeSpan_Foreach_CoordSum1D",
       "methods": [
@@ -32,9 +32,9 @@
           "codeSnippet": "foreach (ref var r in _array.AsSpan())\n    sum += r.X + r.Y;",
           "isBaseline": true,
           "mean_us": 154.2,
-          "error_us": 1.07,
-          "stddev_us": 1.42,
-          "gbPerSec": 9.54,
+          "error_us": 0.28,
+          "stddev_us": 0.15,
+          "gbPerSec": 47.54,
           "allocated": 0
         },
         {
@@ -43,28 +43,17 @@
           "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateSpan())\n    sum += coord.X + coord.Y;",
           "isBaseline": false,
           "mean_us": 155.8,
-          "error_us": 0.51,
-          "stddev_us": 0.67,
-          "gbPerSec": 9.44,
-          "allocated": 0
-        },
-        {
-          "name": "TraitSpan_Indexer_CoordSum1D",
-          "label": "TraitSpan Indexer (reference)",
-          "codeSnippet": "var span = _array.AsCoordinateSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;",
-          "isBaseline": false,
-          "mean_us": 165.3,
-          "error_us": 0.46,
-          "stddev_us": 0.61,
-          "gbPerSec": 8.9,
+          "error_us": 0.31,
+          "stddev_us": 0.17,
+          "gbPerSec": 47.05,
           "allocated": 0
         }
       ]
     },
     {
       "id": "rect-1d-size-foreach",
-      "name": "Size foreach \u2014 Primary (Width + Height)",
-      "description": "Sum Width + Height using foreach. Size trait at offset 8 (non-zero offset penalty). Measures strided foreach with a non-zero trait offset.",
+      "name": "Size foreach \u2014 Width + Height",
+      "description": "Sum Width + Height using foreach. Size trait at offset 8 (non-zero offset). Measures strided foreach with a non-zero trait offset.",
       "baseline": "NativeSpan_Foreach_SizeSum1D",
       "methods": [
         {
@@ -73,9 +62,9 @@
           "codeSnippet": "foreach (ref var r in _array.AsSpan())\n    sum += r.Width + r.Height;",
           "isBaseline": true,
           "mean_us": 163.1,
-          "error_us": 0.8,
-          "stddev_us": 1.07,
-          "gbPerSec": 9.02,
+          "error_us": 0.25,
+          "stddev_us": 0.13,
+          "gbPerSec": 44.93,
           "allocated": 0
         },
         {
@@ -84,28 +73,17 @@
           "codeSnippet": "foreach (ref readonly var size in _array.AsSizeSpan())\n    sum += size.Width + size.Height;",
           "isBaseline": false,
           "mean_us": 159.7,
-          "error_us": 0.41,
-          "stddev_us": 0.55,
-          "gbPerSec": 9.21,
-          "allocated": 0
-        },
-        {
-          "name": "TraitSpan_Indexer_SizeSum1D",
-          "label": "TraitSpan Indexer (reference)",
-          "codeSnippet": "var span = _array.AsSizeSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].Width + span[i].Height;",
-          "isBaseline": false,
-          "mean_us": 165.3,
-          "error_us": 0.86,
-          "stddev_us": 1.14,
-          "gbPerSec": 8.9,
+          "error_us": 0.3,
+          "stddev_us": 0.16,
+          "gbPerSec": 45.89,
           "allocated": 0
         }
       ]
     },
     {
       "id": "rect-1d-all-fields",
-      "name": "All Fields \u2014 Dual Trait (X + Y + Width + Height)",
-      "description": "Sum all 4 fields. Compares native foreach, fused Zip enumerator (two pointer-increment cursors in lockstep), and dual indexer access.",
+      "name": "All Fields \u2014 X + Y + Width + Height",
+      "description": "Sum all 4 fields requiring both traits. Compares native foreach (single pointer, full struct), fused Zip enumerator (two pointer-increment cursors in lockstep), and dual indexer.",
       "baseline": "NativeSpan_Foreach_AllFieldsSum1D",
       "methods": [
         {
@@ -114,9 +92,9 @@
           "codeSnippet": "foreach (ref var r in _array.AsSpan())\n    sum += r.X + r.Y + r.Width + r.Height;",
           "isBaseline": true,
           "mean_us": 155.1,
-          "error_us": 1.1,
-          "stddev_us": 1.46,
-          "gbPerSec": 9.48,
+          "error_us": 0.22,
+          "stddev_us": 0.12,
+          "gbPerSec": 47.27,
           "allocated": 0
         },
         {
@@ -125,9 +103,9 @@
           "codeSnippet": "foreach (var pair in coordSpan.Zip(sizeSpan))\n    sum += pair.First.X + pair.First.Y\n         + pair.Second.Width + pair.Second.Height;",
           "isBaseline": false,
           "mean_us": 173.5,
-          "error_us": 0.3,
-          "stddev_us": 0.39,
-          "gbPerSec": 8.48,
+          "error_us": 0.35,
+          "stddev_us": 0.19,
+          "gbPerSec": 42.25,
           "allocated": 0
         },
         {
@@ -136,9 +114,9 @@
           "codeSnippet": "for (int i = 0; i < coordSpan.Length; i++)\n    sum += coordSpan[i].X + coordSpan[i].Y\n         + sizeSpan[i].Width + sizeSpan[i].Height;",
           "isBaseline": false,
           "mean_us": 234.4,
-          "error_us": 0.68,
-          "stddev_us": 0.9,
-          "gbPerSec": 6.28,
+          "error_us": 0.55,
+          "stddev_us": 0.3,
+          "gbPerSec": 31.28,
           "allocated": 0
         }
       ]

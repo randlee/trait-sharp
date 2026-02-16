@@ -359,6 +359,8 @@ CSS = """
   .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border);
             font-size: 0.75rem; color: #636e72; text-align: center; }
   .platform-columns { display: grid; gap: 0; }
+  .root-cause td { font-style: italic; color: #636e72; font-size: 0.8rem;
+                   padding: 0.2rem 0.8rem 0.4rem; background: #fffdf5; border-top: none; }
 </style>
 """
 
@@ -485,8 +487,42 @@ def html_data_table_public(group: dict) -> str:
     return header + rows + "  </table>\n"
 
 
+def _load_root_cause_lookup() -> dict[str, str]:
+    """Load rootCause annotations from benchmark-groups.json. Returns {method_name: rootCause}."""
+    lookup = {}
+    try:
+        groups_config = json.loads(GROUPS_FILE.read_text())
+        for bc in groups_config.get("benchmarkClasses", []):
+            for group in bc.get("comparisonGroups", []):
+                for method in group.get("methods", []):
+                    rc = method.get("rootCause", "")
+                    if rc:
+                        lookup[method["name"]] = rc
+    except Exception:
+        pass
+    return lookup
+
+
+# Module-level cache (populated on first use)
+_ROOT_CAUSE_CACHE: dict[str, str] | None = None
+
+
+def get_root_cause(method_name: str) -> str:
+    """Get rootCause for a method, or empty string if none."""
+    global _ROOT_CAUSE_CACHE
+    if _ROOT_CAUSE_CACHE is None:
+        _ROOT_CAUSE_CACHE = _load_root_cause_lookup()
+    return _ROOT_CAUSE_CACHE.get(method_name, "")
+
+
 def html_data_table_regression(group_baseline: dict, group_latest: dict) -> str:
-    """Render a baseline vs latest comparison table for regression report."""
+    """Render a baseline vs latest comparison table for regression report.
+
+    Includes:
+      - Temporal delta columns (baseline vs latest)
+      - 'vs Group Baseline' column showing within-group ratio (TraitSpan vs Span)
+      - Root cause annotation rows for methods with rootCause in benchmark-groups.json
+    """
     bl_by_name = {m["name"]: m for m in group_baseline.get("methods", [])}
     lt_by_name = {m["name"]: m for m in group_latest.get("methods", [])}
     all_names = []
@@ -496,11 +532,22 @@ def html_data_table_regression(group_baseline: dict, group_latest: dict) -> str:
             all_names.append(m["name"])
             seen.add(m["name"])
 
+    # Find within-group baseline mean from latest data
+    group_baseline_name = group_latest.get("baseline", "")
+    group_baseline_mean = None
+    for m in group_latest.get("methods", []):
+        if m["name"] == group_baseline_name:
+            group_baseline_mean = m.get("mean_us")
+            break
+
+    num_cols = 8  # total columns for root-cause colspan
+
     header = """  <table class="benchmark-table">
     <tr>
       <th>Method</th>
       <th>Baseline (µs)</th><th>Current (µs)</th>
       <th>Δ (µs)</th><th>Δ (%)</th>
+      <th>vs Group Baseline</th>
       <th>Baseline GB/s</th><th>Current GB/s</th>
     </tr>
 """
@@ -511,7 +558,9 @@ def html_data_table_regression(group_baseline: dict, group_latest: dict) -> str:
         label = lt.get("label", bl.get("label", name))
         bl_mean = bl.get("mean_us")
         lt_mean = lt.get("mean_us")
+        is_group_baseline = (name == group_baseline_name)
 
+        # Temporal delta (baseline vs latest)
         if bl_mean is not None and lt_mean is not None:
             delta = lt_mean - bl_mean
             pct = (delta / bl_mean) * 100 if bl_mean != 0 else 0
@@ -532,16 +581,30 @@ def html_data_table_regression(group_baseline: dict, group_latest: dict) -> str:
             delta_str = "—"
             pct_str = "—"
 
-        rows += f"""    <tr>
+        # Within-group ratio (vs group baseline)
+        if is_group_baseline:
+            ratio_str = "baseline"
+            ratio_class = "neutral"
+        else:
+            ratio_str, ratio_class = compute_ratio(lt_mean, group_baseline_mean)
+
+        tr_class = ' class="baseline"' if is_group_baseline else ""
+        rows += f"""    <tr{tr_class}>
       <td>{escape(label)}</td>
       <td>{fmt_us(bl_mean)}</td>
       <td>{fmt_us(lt_mean)}</td>
       <td class="{delta_class}">{delta_str}</td>
       <td class="{delta_class}">{pct_str}</td>
+      <td class="{ratio_class}">{ratio_str}</td>
       <td>{fmt_gbs(bl.get('gbPerSec'))}</td>
       <td>{fmt_gbs(lt.get('gbPerSec'))}</td>
     </tr>
 """
+        # Root cause annotation row
+        root_cause = get_root_cause(name)
+        if root_cause:
+            rows += f'    <tr class="root-cause"><td colspan="{num_cols}">{escape(root_cause)}</td></tr>\n'
+
     return header + rows + "  </table>\n"
 
 
