@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "benchmarkClass": "Sum2DBenchmarks",
+    "title": "2D Point Array \u2014 Coordinate Access",
+    "description": "Sum X + Y over BenchmarkPoint[800\u00d7600] with 2D access patterns. Measures TraitSpan2D overhead for row-based foreach iteration.",
+    "elementType": "BenchmarkPoint",
+    "elementSize": 8,
+    "arrayLength": 480000,
+    "totalBytes": 3840000,
+    "timestamp": "2026-02-16T15:30:00Z",
+    "environment": {
+      "cpu": "Apple M4 Max",
+      "cpuId": "apple-m4-max",
+      "os": "macOS 15.3.1 (24D70)",
+      "osSlug": "macos",
+      "arch": "ARM64",
+      "dotnetSdk": "9.0.200",
+      "runtime": ".NET 9.0.2 (9.0.225.6610), Arm64 RyuJIT AdvSIMD",
+      "benchmarkDotNet": "v0.14.0"
+    }
+  },
+  "comparisonGroups": [
+    {
+      "id": "point-2d-row-foreach",
+      "name": "Row-Slice foreach \u2014 Primary Pattern",
+      "description": "Sum two int fields using row-slice foreach. Native Span uses Slice()+foreach; TraitSpan2D uses GetRow()+foreach with pointer-increment cursors.",
+      "baseline": "NativeSpan_RowSlice_Sum2D",
+      "methods": [
+        {
+          "name": "NativeSpan_RowSlice_Sum2D",
+          "label": "Span<T> Slice + foreach (ref)",
+          "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    foreach (ref var pt in flat.Slice(row * Width, Width))\n        sum += pt.X + pt.Y;",
+          "isBaseline": true,
+          "mean_us": 104.3,
+          "error_us": 0.46,
+          "stddev_us": 0.61,
+          "gbPerSec": 7.05,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan2D_RowForeach_Sum2D",
+          "label": "TraitSpan2D GetRow + foreach",
+          "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;",
+          "isBaseline": false,
+          "mean_us": 106.6,
+          "error_us": 0.94,
+          "stddev_us": 1.25,
+          "gbPerSec": 6.9,
+          "allocated": 0
+        },
+        {
+          "name": "NativeLayoutSpan_RowSlice_Sum2D",
+          "label": "NativeSpan Slice + foreach (contiguous fast-path)",
+          "codeSnippet": "ReadOnlySpan<CoordinateLayout> flat = _array.AsCoordinateNativeSpan();\nfor (int row = 0; row < Height; row++)\n    foreach (ref readonly var coord in flat.Slice(row * Width, Width))\n        sum += coord.X + coord.Y;",
+          "isBaseline": false,
+          "mean_us": 103.3,
+          "error_us": 0.51,
+          "stddev_us": 0.68,
+          "gbPerSec": 7.12,
+          "allocated": 0
+        }
+      ]
+    },
+    {
+      "id": "point-2d-indexer",
+      "name": "Indexer \u2014 Reference Pattern",
+      "description": "Same work using indexer access. Native Span uses flat [row*W+col]; TraitSpan2D uses [row, col] indexer.",
+      "baseline": "NativeSpan_RowSlice_Sum2D",
+      "methods": [
+        {
+          "name": "NativeSpan_Foreach_Sum2D",
+          "label": "Span<T> flat foreach (ignores 2D)",
+          "codeSnippet": "foreach (ref var pt in _array.AsSpan())\n    sum += pt.X + pt.Y;",
+          "isBaseline": false,
+          "mean_us": 103.2,
+          "error_us": 0.18,
+          "stddev_us": 0.24,
+          "gbPerSec": 7.12,
+          "allocated": 0
+        },
+        {
+          "name": "NativeSpan_Indexer_Sum2D",
+          "label": "Span<T> [row*W+col] Indexer",
+          "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + ...;",
+          "isBaseline": false,
+          "mean_us": 111.1,
+          "error_us": 0.6,
+          "stddev_us": 0.8,
+          "gbPerSec": 6.62,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan2D_Indexer_Sum2D",
+          "label": "TraitSpan2D [row, col] Indexer",
+          "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    for (int col = 0; col < span2d.Width; col++)\n        sum += span2d[row, col].X + span2d[row, col].Y;",
+          "isBaseline": false,
+          "mean_us": 144.9,
+          "error_us": 0.34,
+          "stddev_us": 0.45,
+          "gbPerSec": 5.07,
+          "allocated": 0
+        }
+      ]
+    }
+  ]
+}

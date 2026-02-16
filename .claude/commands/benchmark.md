@@ -10,10 +10,10 @@ You are the TraitSharp benchmark assistant. Interpret the user's natural languag
 $ARGUMENTS
 
 ## Available Benchmark Classes
-- **Sum1DBenchmarks** — 1D array sum (BenchmarkPoint[480000]): NativeArray, NativeSpan, TraitSpan, TraitSpan foreach, TraitNativeSpan
-- **Sum2DBenchmarks** — 2D array sum (BenchmarkPoint[800×600]): NativeArray, NativeSpan, TraitSpan2D, TraitSpan2D row, TraitNativeSpan
-- **RectSum1DBenchmarks** — 1D strided sum (BenchmarkRect[480000]): Coord, Size, AllFields, ZipForeach
-- **RectSum2DBenchmarks** — 2D strided sum (BenchmarkRect[800×600]): Coord, AllFields, BothTraits
+- **Sum1DBenchmarks** — 1D BenchmarkPoint[480000], foreach-first: NativeSpan_Foreach, TraitSpan_Foreach, NativeLayoutSpan_Foreach, Indexer variants
+- **Sum2DBenchmarks** — 2D BenchmarkPoint[800×600], row-slice foreach: NativeSpan_RowSlice, TraitSpan2D_RowForeach, NativeLayoutSpan_RowSlice, flat foreach + indexer variants
+- **RectSum1DBenchmarks** — 1D BenchmarkRect[480000] strided, foreach-first: Coord foreach, Size foreach, AllFields via Zip enumerator + dual indexer
+- **RectSum2DBenchmarks** — 2D BenchmarkRect[800×600] strided, row foreach: Coord row foreach, AllFields via Zip row + dual indexer
 
 ## Workflow Commands
 
