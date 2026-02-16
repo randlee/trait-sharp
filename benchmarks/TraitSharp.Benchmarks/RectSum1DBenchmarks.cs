@@ -92,4 +92,17 @@ public class RectSum1DBenchmarks : RectArraySetupBase
         }
         return sum;
     }
+
+    [Benchmark]
+    public long TraitSpan_ZipForeach1D()
+    {
+        long sum = 0;
+        var coordSpan = _array.AsCoordinateSpan();
+        var sizeSpan = _array.AsSizeSpan();
+        foreach (var pair in coordSpan.Zip(sizeSpan))
+        {
+            sum += pair.First.X + pair.First.Y + pair.Second.Width + pair.Second.Height;
+        }
+        return sum;
+    }
 }
