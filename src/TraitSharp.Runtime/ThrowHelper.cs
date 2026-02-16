@@ -64,5 +64,23 @@ namespace TraitSharp.Runtime
                 "Use IsContiguous to check before calling AsNativeSpan(), or use " +
                 "TryAsNativeSpan() for a safe alternative.");
         }
+
+        /// <summary>Throws an <see cref="ArgumentException"/> indicating zip spans have different lengths.</summary>
+        [DoesNotReturn]
+        public static void ThrowArgumentException_ZipLengthMismatch()
+        {
+            throw new ArgumentException(
+                "Cannot zip trait spans with different lengths. " +
+                "All spans passed to Zip must have the same Length.");
+        }
+
+        /// <summary>Throws an <see cref="ArgumentException"/> indicating zip spans have different strides.</summary>
+        [DoesNotReturn]
+        public static void ThrowArgumentException_ZipStrideMismatch()
+        {
+            throw new ArgumentException(
+                "Cannot zip trait spans with different strides. " +
+                "All spans passed to Zip must originate from the same source array type.");
+        }
     }
 }
