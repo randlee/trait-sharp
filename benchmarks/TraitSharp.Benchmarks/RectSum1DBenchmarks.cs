@@ -4,33 +4,22 @@ using TraitSharp.Runtime;
 namespace TraitSharp.Benchmarks;
 
 /// <summary>
-/// 1D array sum benchmarks for composite rect trait: sum X + Y + Width + Height over BenchmarkRect[480000].
-/// Compares native array access vs Span vs TraitSpan (Coordinate view) vs TraitSpan (Size view).
-/// All allocations in GlobalSetup -- inner loops are identical.
+/// 1D sum benchmarks for BenchmarkRect[480000] — strided access (layout smaller than source).
+/// Each benchmark pair does identical work: NativeSpan baseline sums the same fields as the TraitSpan variant.
 /// </summary>
 [Config(typeof(FastBenchmarkConfig))]
 public class RectSum1DBenchmarks : RectArraySetupBase
 {
-    [Benchmark(Baseline = true)]
-    public long NativeArray_Sum1D()
-    {
-        long sum = 0;
-        var arr = _array;
-        for (int i = 0; i < arr.Length; i++)
-        {
-            sum += arr[i].X + arr[i].Y + arr[i].Width + arr[i].Height;
-        }
-        return sum;
-    }
+    // ── Coordinate view: sum X + Y (2 fields at offset 0) ──
 
-    [Benchmark]
-    public long NativeSpan_Sum1D()
+    [Benchmark(Baseline = true)]
+    public long NativeSpan_CoordSum1D()
     {
         long sum = 0;
         Span<BenchmarkRect> span = _array.AsSpan();
         for (int i = 0; i < span.Length; i++)
         {
-            sum += span[i].X + span[i].Y + span[i].Width + span[i].Height;
+            sum += span[i].X + span[i].Y;
         }
         return sum;
     }
@@ -48,6 +37,20 @@ public class RectSum1DBenchmarks : RectArraySetupBase
         return sum;
     }
 
+    // ── Size view: sum Width + Height (2 fields at offset 8) ──
+
+    [Benchmark]
+    public long NativeSpan_SizeSum1D()
+    {
+        long sum = 0;
+        Span<BenchmarkRect> span = _array.AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            sum += span[i].Width + span[i].Height;
+        }
+        return sum;
+    }
+
     [Benchmark]
     public long TraitSpan_SizeSum1D()
     {
@@ -57,6 +60,20 @@ public class RectSum1DBenchmarks : RectArraySetupBase
         {
             ref readonly var size = ref span[i];
             sum += size.Width + size.Height;
+        }
+        return sum;
+    }
+
+    // ── Both views: sum all 4 fields via two trait spans ──
+
+    [Benchmark]
+    public long NativeSpan_AllFieldsSum1D()
+    {
+        long sum = 0;
+        Span<BenchmarkRect> span = _array.AsSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            sum += span[i].X + span[i].Y + span[i].Width + span[i].Height;
         }
         return sum;
     }
@@ -72,6 +89,19 @@ public class RectSum1DBenchmarks : RectArraySetupBase
             ref readonly var coord = ref coordSpan[i];
             ref readonly var size = ref sizeSpan[i];
             sum += coord.X + coord.Y + size.Width + size.Height;
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public long TraitSpan_ZipForeach1D()
+    {
+        long sum = 0;
+        var coordSpan = _array.AsCoordinateSpan();
+        var sizeSpan = _array.AsSizeSpan();
+        foreach (var pair in coordSpan.Zip(sizeSpan))
+        {
+            sum += pair.First.X + pair.First.Y + pair.Second.Width + pair.Second.Height;
         }
         return sum;
     }

@@ -516,6 +516,17 @@ namespace TraitSharp.SourceGenerator
                 {
                     var implCode = ImplementationGenerator.Generate(impl);
                     context.AddSource($"{impl.TypeName}.{impl.Trait.Name}.TraitImpl.g.cs", implCode);
+
+                    // Generate optimized span factory overloads for zero-offset implementations.
+                    // These return two-parameter span types where JIT constant-folds sizeof(TSource).
+                    if (impl.Trait.GenerateLayout)
+                    {
+                        var spanOverloads = TraitSpanFactoryGenerator.GeneratePerImplementation(impl);
+                        if (spanOverloads != null)
+                        {
+                            context.AddSource($"{impl.TypeName}.{impl.Trait.Name}.SpanFactory.g.cs", spanOverloads);
+                        }
+                    }
                 }
             }
 
@@ -546,6 +557,16 @@ namespace TraitSharp.SourceGenerator
                 {
                     var adapterCode = ImplementationGenerator.GenerateExternal(external);
                     context.AddSource($"{external.TargetTypeName}.{external.Trait.Name}.ExternalImpl.g.cs", adapterCode);
+
+                    // Generate optimized span factory overloads for zero-offset external implementations.
+                    if (external.Trait.GenerateLayout)
+                    {
+                        var spanOverloads = TraitSpanFactoryGenerator.GeneratePerExternalImplementation(external);
+                        if (spanOverloads != null)
+                        {
+                            context.AddSource($"{external.TargetTypeName}.{external.Trait.Name}.SpanFactory.g.cs", spanOverloads);
+                        }
+                    }
                 }
             }
         }
