@@ -1,0 +1,218 @@
+{
+  "benchmarkClasses": [
+    {
+      "class": "Sum1DBenchmarks",
+      "title": "1D Point Array — Coordinate Access",
+      "description": "Sum X + Y over BenchmarkPoint[480,000] (8 bytes per element). Measures overhead of TraitSpan vs native Span for a simple layout where trait size equals source size (no stride gap).",
+      "elementType": "BenchmarkPoint",
+      "elementSize": 8,
+      "arrayLength": 480000,
+      "totalBytes": 3840000,
+      "bdnFilter": "TraitSharp.Benchmarks.Sum1DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "point-1d-coord",
+          "name": "Coordinate Sum (X + Y)",
+          "description": "Sum two int fields from each element. Trait layout matches source layout exactly (no offset, no stride gap). This is the best-case scenario for TraitSpan — measures pure abstraction overhead.",
+          "baseline": "NativeSpan_Sum1D",
+          "methods": [
+            {
+              "name": "NativeArray_Sum1D",
+              "label": "Array Indexer",
+              "codeSnippet": "var arr = _array;\nfor (int i = 0; i < arr.Length; i++)\n    sum += arr[i].X + arr[i].Y;"
+            },
+            {
+              "name": "NativeSpan_Sum1D",
+              "label": "Span<T> Indexer",
+              "codeSnippet": "Span<BenchmarkPoint> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;"
+            },
+            {
+              "name": "TraitSpan_Sum1D",
+              "label": "TraitSpan Indexer",
+              "codeSnippet": "var span = _array.AsCoordinateSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var coord = ref span[i];\n    sum += coord.X + coord.Y;\n}"
+            },
+            {
+              "name": "TraitSpan_Foreach_Sum1D",
+              "label": "TraitSpan foreach",
+              "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateSpan())\n    sum += coord.X + coord.Y;"
+            },
+            {
+              "name": "TraitNativeSpan_Sum1D",
+              "label": "NativeSpan (contiguous fast-path)",
+              "codeSnippet": "ReadOnlySpan<CoordinateLayout> span = _array.AsCoordinateNativeSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "Sum2DBenchmarks",
+      "title": "2D Point Array — Coordinate Access",
+      "description": "Sum X + Y over BenchmarkPoint[800×600] with 2D access patterns. Measures TraitSpan2D overhead for element and row-based iteration.",
+      "elementType": "BenchmarkPoint",
+      "elementSize": 8,
+      "arrayLength": 480000,
+      "totalBytes": 3840000,
+      "bdnFilter": "TraitSharp.Benchmarks.Sum2DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "point-2d-coord",
+          "name": "2D Coordinate Sum (X + Y)",
+          "description": "Sum two int fields with nested row/col loops. Compares flat array math, 2D TraitSpan indexer, and row-slice iteration.",
+          "baseline": "NativeSpan_Sum2D",
+          "methods": [
+            {
+              "name": "NativeArray_Sum2D",
+              "label": "Array [row*W+col]",
+              "codeSnippet": "var arr = _array;\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += arr[row * Width + col].X + arr[row * Width + col].Y;"
+            },
+            {
+              "name": "NativeSpan_Sum2D",
+              "label": "Span<T> [row*W+col]",
+              "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + flat[row * Width + col].Y;"
+            },
+            {
+              "name": "TraitSpan2D_Sum2D",
+              "label": "TraitSpan2D [row, col]",
+              "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    for (int col = 0; col < span2d.Width; col++)\n        sum += span2d[row, col].X + span2d[row, col].Y;"
+            },
+            {
+              "name": "TraitSpan2D_RowSum",
+              "label": "TraitSpan2D GetRow foreach",
+              "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;"
+            },
+            {
+              "name": "TraitNativeSpan_Sum2D",
+              "label": "NativeSpan [row*W+col]",
+              "codeSnippet": "ReadOnlySpan<CoordinateLayout> flat = _array.AsCoordinateNativeSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + flat[row * Width + col].Y;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "RectSum1DBenchmarks",
+      "title": "1D Rectangle Array — Strided Trait Access",
+      "description": "Sum fields from BenchmarkRect[480,000] (16 bytes per element). Rectangle implements two traits: ICoordinate (X,Y at offset 0) and ISize (Width,Height at offset 8). Trait spans must stride over 16-byte elements to access 8-byte trait views — the core strided access pattern.",
+      "elementType": "BenchmarkRect",
+      "elementSize": 16,
+      "arrayLength": 480000,
+      "totalBytes": 7680000,
+      "bdnFilter": "TraitSharp.Benchmarks.RectSum1DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "rect-1d-coord",
+          "name": "Single Trait — Coordinate (X + Y)",
+          "description": "Sum X + Y only. Coordinate trait lives at offset 0 within BenchmarkRect. Measures strided access overhead when trait (8 bytes) is smaller than source (16 bytes).",
+          "baseline": "NativeSpan_CoordSum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_CoordSum1D",
+              "label": "Span<BenchmarkRect> Indexer",
+              "codeSnippet": "Span<BenchmarkRect> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;"
+            },
+            {
+              "name": "TraitSpan_CoordSum1D",
+              "label": "TraitSpan Indexer",
+              "codeSnippet": "var span = _array.AsCoordinateSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var coord = ref span[i];\n    sum += coord.X + coord.Y;\n}"
+            }
+          ]
+        },
+        {
+          "id": "rect-1d-size",
+          "name": "Single Trait — Size (Width + Height)",
+          "description": "Sum Width + Height only. Size trait lives at offset 8 within BenchmarkRect. Measures strided access with a non-zero trait offset.",
+          "baseline": "NativeSpan_SizeSum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_SizeSum1D",
+              "label": "Span<BenchmarkRect> Indexer",
+              "codeSnippet": "Span<BenchmarkRect> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].Width + span[i].Height;"
+            },
+            {
+              "name": "TraitSpan_SizeSum1D",
+              "label": "TraitSpan Indexer",
+              "codeSnippet": "var span = _array.AsSizeSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var size = ref span[i];\n    sum += size.Width + size.Height;\n}"
+            }
+          ]
+        },
+        {
+          "id": "rect-1d-all-fields",
+          "name": "All Fields — Dual Trait (X + Y + Width + Height)",
+          "description": "Sum all 4 fields from each element. Compares three approaches: native single-struct access, two separate TraitSpan indexers, and fused Zip enumerator with pointer-increment cursors.",
+          "baseline": "NativeSpan_AllFieldsSum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_AllFieldsSum1D",
+              "label": "Span<BenchmarkRect> — all fields",
+              "codeSnippet": "Span<BenchmarkRect> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y + span[i].Width + span[i].Height;"
+            },
+            {
+              "name": "TraitSpan_BothSum1D",
+              "label": "Two TraitSpan Indexers",
+              "codeSnippet": "var coordSpan = _array.AsCoordinateSpan();\nvar sizeSpan = _array.AsSizeSpan();\nfor (int i = 0; i < coordSpan.Length; i++)\n{\n    ref readonly var coord = ref coordSpan[i];\n    ref readonly var size = ref sizeSpan[i];\n    sum += coord.X + coord.Y + size.Width + size.Height;\n}"
+            },
+            {
+              "name": "TraitSpan_ZipForeach1D",
+              "label": "Zip Enumerator (fused pointer walk)",
+              "codeSnippet": "var coordSpan = _array.AsCoordinateSpan();\nvar sizeSpan = _array.AsSizeSpan();\nforeach (var pair in coordSpan.Zip(sizeSpan))\n    sum += pair.First.X + pair.First.Y\n         + pair.Second.Width + pair.Second.Height;"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "RectSum2DBenchmarks",
+      "title": "2D Rectangle Array — Strided Trait Access",
+      "description": "Sum fields from BenchmarkRect[800×600] with 2D access patterns and strided trait views.",
+      "elementType": "BenchmarkRect",
+      "elementSize": 16,
+      "arrayLength": 480000,
+      "totalBytes": 7680000,
+      "bdnFilter": "TraitSharp.Benchmarks.RectSum2DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "rect-2d-coord",
+          "name": "2D Single Trait — Coordinate (X + Y)",
+          "description": "Sum X + Y with 2D row/col access. Compares flat native indexing, 2D TraitSpan indexer, and row-slice iteration.",
+          "baseline": "NativeSpan_CoordSum2D",
+          "methods": [
+            {
+              "name": "NativeSpan_CoordSum2D",
+              "label": "Span<BenchmarkRect> [row*W+col]",
+              "codeSnippet": "Span<BenchmarkRect> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + flat[row * Width + col].Y;"
+            },
+            {
+              "name": "TraitSpan2D_CoordSum2D",
+              "label": "TraitSpan2D [row, col]",
+              "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    for (int col = 0; col < span2d.Width; col++)\n        sum += span2d[row, col].X + span2d[row, col].Y;"
+            },
+            {
+              "name": "TraitSpan2D_CoordRowSum",
+              "label": "TraitSpan2D GetRow + foreach",
+              "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;"
+            }
+          ]
+        },
+        {
+          "id": "rect-2d-all-fields",
+          "name": "2D All Fields — Dual Trait (X + Y + Width + Height)",
+          "description": "Sum all 4 fields with 2D access. Compares native flat access vs two separate 2D TraitSpan indexers.",
+          "baseline": "NativeSpan_AllFieldsSum2D",
+          "methods": [
+            {
+              "name": "NativeSpan_AllFieldsSum2D",
+              "label": "Span<BenchmarkRect> [row*W+col] — all fields",
+              "codeSnippet": "Span<BenchmarkRect> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + flat[row * Width + col].Y\n             + flat[row * Width + col].Width + flat[row * Width + col].Height;"
+            },
+            {
+              "name": "TraitSpan2D_BothSum2D",
+              "label": "Two TraitSpan2D Indexers",
+              "codeSnippet": "var coordSpan = _array.AsCoordinateSpan2D(Width, Height);\nvar sizeSpan = _array.AsSizeSpan2D(Width, Height);\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += coordSpan[row, col].X + coordSpan[row, col].Y\n             + sizeSpan[row, col].Width + sizeSpan[row, col].Height;"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

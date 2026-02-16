@@ -1,0 +1,19 @@
+  <h2>🤖 AI Analysis Notes</h2>
+  <p class="scratchpad-meta">Last updated: <em>2026-02-16 20:25 UTC</em></p>
+
+  <!--
+    This file is maintained by the AI benchmark assistant.
+    It is NEVER overwritten by generate-report.py — only created if missing.
+    The AI appends dated entries below after each benchmark run.
+    To reset, delete this file and regenerate the report.
+  -->
+
+  <h3>2026-02-16 20:25 — Initial Baseline + Validation Run (RectSum1DBenchmarks)</h3>
+  <ul>
+    <li>✅ <strong>No regressions detected</strong> — all methods within ±2% of baseline (noise floor)</li>
+    <li>✅ <strong>Zip enumerator</strong> (188.1 µs) continues to outperform dual-indexed access (251.6 µs) by ~25%</li>
+    <li>✅ <strong>Zip vs native all-fields</strong>: 188.1 µs vs 199.5 µs — Zip is 5.7% faster than native Span accessing all 4 fields</li>
+    <li>Single-trait coord overhead: TraitSpan 176.6 µs vs NativeSpan 167.3 µs = 5.6% overhead</li>
+    <li>Single-trait size overhead: TraitSpan 175.5 µs vs NativeSpan 154.9 µs = 13.3% overhead (non-zero offset penalty)</li>
+    <li>📝 Baseline established from zip-enumerators branch (PR #17). This run validates consistency.</li>
+  </ul>

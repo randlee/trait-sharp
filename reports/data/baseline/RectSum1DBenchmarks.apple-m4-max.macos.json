@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "benchmarkClass": "RectSum1DBenchmarks",
+    "title": "1D Rectangle Array \u2014 Strided Trait Access",
+    "description": "Sum fields from BenchmarkRect[480,000] (16 bytes per element). Rectangle implements two traits: ICoordinate (X,Y at offset 0) and ISize (Width,Height at offset 8). Trait spans must stride over 16-byte elements to access 8-byte trait views \u2014 the core strided access pattern.",
+    "elementType": "BenchmarkRect",
+    "elementSize": 16,
+    "arrayLength": 480000,
+    "totalBytes": 7680000,
+    "timestamp": "2026-02-16T20:22:49.687800+00:00",
+    "environment": {
+      "os": "macOS-15.5-arm64-arm-64bit-Mach-O",
+      "osSlug": "macos",
+      "cpu": "Apple M4 Max",
+      "cpuId": "apple-m4-max",
+      "coresLogical": 16,
+      "dotnetSdk": "10.0.100",
+      "runtime": ".NET 8.0.20",
+      "benchmarkDotNet": "0.14.0"
+    }
+  },
+  "comparisonGroups": [
+    {
+      "id": "rect-1d-coord",
+      "name": "Single Trait \u2014 Coordinate (X + Y)",
+      "description": "Sum X + Y only. Coordinate trait lives at offset 0 within BenchmarkRect. Measures strided access overhead when trait (8 bytes) is smaller than source (16 bytes).",
+      "baseline": "NativeSpan_CoordSum1D",
+      "methods": [
+        {
+          "name": "NativeSpan_CoordSum1D",
+          "label": "Span<BenchmarkRect> Indexer",
+          "codeSnippet": "Span<BenchmarkRect> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;",
+          "isBaseline": true,
+          "mean_us": 168.0,
+          "error_us": 0.88,
+          "stddev_us": 1.29,
+          "gbPerSec": 42.58,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan_CoordSum1D",
+          "label": "TraitSpan Indexer",
+          "codeSnippet": "var span = _array.AsCoordinateSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var coord = ref span[i];\n    sum += coord.X + coord.Y;\n}",
+          "isBaseline": false,
+          "mean_us": 175.1,
+          "error_us": 1.58,
+          "stddev_us": 2.31,
+          "gbPerSec": 40.85,
+          "allocated": 0
+        }
+      ]
+    },
+    {
+      "id": "rect-1d-size",
+      "name": "Single Trait \u2014 Size (Width + Height)",
+      "description": "Sum Width + Height only. Size trait lives at offset 8 within BenchmarkRect. Measures strided access with a non-zero trait offset.",
+      "baseline": "NativeSpan_SizeSum1D",
+      "methods": [
+        {
+          "name": "NativeSpan_SizeSum1D",
+          "label": "Span<BenchmarkRect> Indexer",
+          "codeSnippet": "Span<BenchmarkRect> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].Width + span[i].Height;",
+          "isBaseline": true,
+          "mean_us": 153.5,
+          "error_us": 0.55,
+          "stddev_us": 0.82,
+          "gbPerSec": 46.6,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan_SizeSum1D",
+          "label": "TraitSpan Indexer",
+          "codeSnippet": "var span = _array.AsSizeSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var size = ref span[i];\n    sum += size.Width + size.Height;\n}",
+          "isBaseline": false,
+          "mean_us": 173.3,
+          "error_us": 0.9,
+          "stddev_us": 1.32,
+          "gbPerSec": 41.28,
+          "allocated": 0
+        }
+      ]
+    },
+    {
+      "id": "rect-1d-all-fields",
+      "name": "All Fields \u2014 Dual Trait (X + Y + Width + Height)",
+      "description": "Sum all 4 fields from each element. Compares three approaches: native single-struct access, two separate TraitSpan indexers, and fused Zip enumerator with pointer-increment cursors.",
+      "baseline": "NativeSpan_AllFieldsSum1D",
+      "methods": [
+        {
+          "name": "NativeSpan_AllFieldsSum1D",
+          "label": "Span<BenchmarkRect> \u2014 all fields",
+          "codeSnippet": "Span<BenchmarkRect> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y + span[i].Width + span[i].Height;",
+          "isBaseline": true,
+          "mean_us": 199.0,
+          "error_us": 0.34,
+          "stddev_us": 0.48,
+          "gbPerSec": 35.95,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan_BothSum1D",
+          "label": "Two TraitSpan Indexers",
+          "codeSnippet": "var coordSpan = _array.AsCoordinateSpan();\nvar sizeSpan = _array.AsSizeSpan();\nfor (int i = 0; i < coordSpan.Length; i++)\n{\n    ref readonly var coord = ref coordSpan[i];\n    ref readonly var size = ref sizeSpan[i];\n    sum += coord.X + coord.Y + size.Width + size.Height;\n}",
+          "isBaseline": false,
+          "mean_us": 249.7,
+          "error_us": 0.91,
+          "stddev_us": 1.31,
+          "gbPerSec": 28.64,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan_ZipForeach1D",
+          "label": "Zip Enumerator (fused pointer walk)",
+          "codeSnippet": "var coordSpan = _array.AsCoordinateSpan();\nvar sizeSpan = _array.AsSizeSpan();\nforeach (var pair in coordSpan.Zip(sizeSpan))\n    sum += pair.First.X + pair.First.Y\n         + pair.Second.Width + pair.Second.Height;",
+          "isBaseline": false,
+          "mean_us": 185.2,
+          "error_us": 0.51,
+          "stddev_us": 0.69,
+          "gbPerSec": 38.62,
+          "allocated": 0
+        }
+      ]
+    }
+  ]
+}

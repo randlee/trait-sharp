@@ -1,0 +1,10 @@
+  <p>
+    TraitSharp provides <strong>zero-allocation trait views</strong> over contiguous arrays using
+    <code>Unsafe.AddByteOffset</code> strided access. These benchmarks compare TraitSpan access
+    patterns against native <code>Span&lt;T&gt;</code> baselines performing identical work.
+  </p>
+  <p>
+    Each comparison group isolates a single variable: the access mechanism. The native baseline
+    and trait variant execute the same inner loop, sum the same fields, over the same data.
+    Ratios are computed against the group-specific baseline (not the BenchmarkDotNet class baseline).
+  </p>
