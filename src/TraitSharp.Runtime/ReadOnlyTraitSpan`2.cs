@@ -194,6 +194,68 @@ namespace TraitSharp.Runtime
             return array;
         }
 
+        /// <summary>
+        /// Returns the raw byte reference to the first element's trait view.
+        /// For internal use by zip enumerators that need cross-type access.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ref byte DangerousGetRawReference()
+        {
+            return ref Unsafe.As<TSource, byte>(ref Unsafe.AsRef(in _reference));
+        }
+
+        /// <summary>
+        /// Creates a fused zip enumerable that iterates this span and another in lockstep,
+        /// yielding read-only pairs. Both spans must have the same length.
+        /// </summary>
+        /// <typeparam name="T2">The trait layout type of the second span.</typeparam>
+        /// <param name="other">The second span to zip with.</param>
+        /// <returns>A <see cref="ReadOnlyTraitZipPairs{TLayout, T2}"/> that can be enumerated with foreach.</returns>
+        /// <exception cref="ArgumentException">Thrown when spans have different lengths.</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlyTraitZipPairs<TLayout, T2> Zip<T2>(ReadOnlyTraitSpan<T2, TSource> other)
+            where T2 : unmanaged
+        {
+            if (_length != other.Length)
+                ThrowHelper.ThrowArgumentException_ZipLengthMismatch();
+            int stride = Unsafe.SizeOf<TSource>();
+            return new ReadOnlyTraitZipPairs<TLayout, T2>(
+                ref DangerousGetRawReference(), ref other.DangerousGetRawReference(), stride, _length);
+        }
+
+        /// <summary>
+        /// Creates a fused zip enumerable that iterates this span and another (single-param) in lockstep.
+        /// Both spans must have the same stride and length.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlyTraitZipPairs<TLayout, T2> Zip<T2>(ReadOnlyTraitSpan<T2> other)
+            where T2 : unmanaged
+        {
+            int stride = Unsafe.SizeOf<TSource>();
+            if (_length != other.Length)
+                ThrowHelper.ThrowArgumentException_ZipLengthMismatch();
+            if (stride != other.Stride)
+                ThrowHelper.ThrowArgumentException_ZipStrideMismatch();
+            return new ReadOnlyTraitZipPairs<TLayout, T2>(
+                ref DangerousGetRawReference(), ref other.DangerousGetRawReference(), stride, _length);
+        }
+
+        /// <summary>
+        /// Creates a fused zip enumerable that iterates this span and two others in lockstep,
+        /// yielding read-only triples. All spans must have the same length.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ReadOnlyTraitZipTriples<TLayout, T2, T3> Zip<T2, T3>(ReadOnlyTraitSpan<T2, TSource> second, ReadOnlyTraitSpan<T3, TSource> third)
+            where T2 : unmanaged
+            where T3 : unmanaged
+        {
+            if (_length != second.Length || _length != third.Length)
+                ThrowHelper.ThrowArgumentException_ZipLengthMismatch();
+            int stride = Unsafe.SizeOf<TSource>();
+            return new ReadOnlyTraitZipTriples<TLayout, T2, T3>(
+                ref DangerousGetRawReference(), ref second.DangerousGetRawReference(), ref third.DangerousGetRawReference(), stride, _length);
+        }
+
         /// <summary>Returns an enumerator for this span.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Enumerator GetEnumerator() => new(this);

@@ -125,6 +125,16 @@ namespace TraitSharp.Runtime
         }
 
         /// <summary>
+        /// Returns the raw byte reference to the first element's trait view.
+        /// For internal use by zip enumerators that need cross-type access.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal ref byte DangerousGetRawReference()
+        {
+            return ref _reference;
+        }
+
+        /// <summary>
         /// Forms a slice out of the current span starting at the specified index.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -212,6 +222,43 @@ namespace TraitSharp.Runtime
             var array = new TLayout[_length];
             CopyTo(array);
             return array;
+        }
+
+        /// <summary>
+        /// Creates a fused zip enumerable that iterates this span and another in lockstep,
+        /// yielding mutable pairs. Both spans must have the same stride and length.
+        /// </summary>
+        /// <typeparam name="T2">The trait layout type of the second span.</typeparam>
+        /// <param name="other">The second span to zip with.</param>
+        /// <returns>A <see cref="TraitZipPairs{TLayout, T2}"/> that can be enumerated with foreach.</returns>
+        /// <exception cref="ArgumentException">Thrown when spans have different lengths or strides.</exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public TraitZipPairs<TLayout, T2> Zip<T2>(TraitSpan<T2> other)
+            where T2 : unmanaged
+        {
+            if (_length != other.Length)
+                ThrowHelper.ThrowArgumentException_ZipLengthMismatch();
+            if (_stride != other.Stride)
+                ThrowHelper.ThrowArgumentException_ZipStrideMismatch();
+            return new TraitZipPairs<TLayout, T2>(
+                ref _reference, ref other.DangerousGetRawReference(), _stride, _length);
+        }
+
+        /// <summary>
+        /// Creates a fused zip enumerable that iterates this span and two others in lockstep,
+        /// yielding mutable triples. All spans must have the same stride and length.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public TraitZipTriples<TLayout, T2, T3> Zip<T2, T3>(TraitSpan<T2> second, TraitSpan<T3> third)
+            where T2 : unmanaged
+            where T3 : unmanaged
+        {
+            if (_length != second.Length || _length != third.Length)
+                ThrowHelper.ThrowArgumentException_ZipLengthMismatch();
+            if (_stride != second.Stride || _stride != third.Stride)
+                ThrowHelper.ThrowArgumentException_ZipStrideMismatch();
+            return new TraitZipTriples<TLayout, T2, T3>(
+                ref _reference, ref second.DangerousGetRawReference(), ref third.DangerousGetRawReference(), _stride, _length);
         }
 
         /// <summary>Returns an enumerator for this span.</summary>
