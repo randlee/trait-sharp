@@ -1,0 +1,235 @@
+{
+  "benchmarkClasses": [
+    {
+      "class": "Sum1DBenchmarks",
+      "title": "1D Point Array — Coordinate Access",
+      "description": "Sum X + Y over BenchmarkPoint[480,000] (8 bytes per element). Measures overhead of TraitSpan vs native Span for a simple layout where trait size equals source size (no stride gap).",
+      "elementType": "BenchmarkPoint",
+      "elementSize": 8,
+      "arrayLength": 480000,
+      "totalBytes": 3840000,
+      "bdnFilter": "TraitSharp.Benchmarks.Sum1DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "point-1d-foreach",
+          "name": "Coordinate Sum — foreach (ref)",
+          "description": "Sum two int fields using foreach with ref. Native Span.GetEnumerator returns ref T; TraitSpan uses pointer-increment cursors. Indexers shown for reference — they carry bounds-check overhead that foreach avoids.",
+          "baseline": "NativeSpan_Foreach_Sum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_Foreach_Sum1D",
+              "label": "Span<T> foreach (ref)",
+              "codeSnippet": "foreach (ref var pt in _array.AsSpan())\n    sum += pt.X + pt.Y;"
+            },
+            {
+              "name": "TraitSpan_Foreach_Sum1D",
+              "label": "TraitSpan foreach (ref readonly)",
+              "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateSpan())\n    sum += coord.X + coord.Y;",
+              "rootCause": "~3%: AddByteOffset stride arithmetic per MoveNext vs contiguous Span pointer increment. Stride equals element size so no cache penalty — only the extra instruction."
+            },
+            {
+              "name": "NativeLayoutSpan_Foreach_Sum1D",
+              "label": "NativeSpan foreach (contiguous fast-path)",
+              "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateNativeSpan())\n    sum += coord.X + coord.Y;"
+            },
+            {
+              "name": "NativeSpan_Indexer_Sum1D",
+              "label": "Span<T> Indexer (reference)",
+              "codeSnippet": "Span<BenchmarkPoint> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;",
+              "rootCause": "~8%: bounds check per access vs foreach pointer walk. Not TraitSpan-specific — this is Span<T> indexer overhead."
+            },
+            {
+              "name": "TraitSpan_Indexer_Sum1D",
+              "label": "TraitSpan Indexer (reference)",
+              "codeSnippet": "var span = _array.AsCoordinateSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var coord = ref span[i];\n    sum += coord.X + coord.Y;\n}",
+              "rootCause": "~17%: bounds check + stride multiply per access. Use foreach for performance-critical paths."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "Sum2DBenchmarks",
+      "title": "2D Point Array — Coordinate Access",
+      "description": "Sum X + Y over BenchmarkPoint[800×600] with 2D access patterns. Measures TraitSpan2D overhead for row-based foreach iteration.",
+      "elementType": "BenchmarkPoint",
+      "elementSize": 8,
+      "arrayLength": 480000,
+      "totalBytes": 3840000,
+      "bdnFilter": "TraitSharp.Benchmarks.Sum2DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "point-2d-row-foreach",
+          "name": "Coordinate Sum — Row-Slice foreach",
+          "description": "Sum two int fields using row-slice foreach. Native Span uses Slice()+foreach; TraitSpan2D uses GetRow()+foreach with pointer-increment cursors. Flat foreach and indexers shown for reference.",
+          "baseline": "NativeSpan_RowSlice_Sum2D",
+          "methods": [
+            {
+              "name": "NativeSpan_RowSlice_Sum2D",
+              "label": "Span<T> Slice + foreach (ref)",
+              "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    foreach (ref var pt in flat.Slice(row * Width, Width))\n        sum += pt.X + pt.Y;"
+            },
+            {
+              "name": "TraitSpan2D_RowForeach_Sum2D",
+              "label": "TraitSpan2D GetRow + foreach",
+              "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;",
+              "rootCause": "~2%: stride arithmetic + per-row GetRow slice construction amortized across 800 columns."
+            },
+            {
+              "name": "NativeLayoutSpan_RowSlice_Sum2D",
+              "label": "NativeSpan Slice + foreach (contiguous fast-path)",
+              "codeSnippet": "ReadOnlySpan<CoordinateLayout> flat = _array.AsCoordinateNativeSpan();\nfor (int row = 0; row < Height; row++)\n    foreach (ref readonly var coord in flat.Slice(row * Width, Width))\n        sum += coord.X + coord.Y;"
+            },
+            {
+              "name": "NativeSpan_Foreach_Sum2D",
+              "label": "Span<T> flat foreach (reference — ignores 2D)",
+              "codeSnippet": "foreach (ref var pt in _array.AsSpan())\n    sum += pt.X + pt.Y;"
+            },
+            {
+              "name": "NativeSpan_Indexer_Sum2D",
+              "label": "Span<T> [row*W+col] Indexer (reference)",
+              "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + ...;",
+              "rootCause": "~7%: bounds check + index arithmetic per access. Not TraitSpan-specific."
+            },
+            {
+              "name": "TraitSpan2D_Indexer_Sum2D",
+              "label": "TraitSpan2D [row, col] Indexer (reference)",
+              "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    for (int col = 0; col < span2d.Width; col++)\n        sum += span2d[row, col].X + span2d[row, col].Y;",
+              "rootCause": "~39%: two bounds checks (row + col) + stride multiply per access. Use row foreach for performance-critical 2D paths."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "RectSum1DBenchmarks",
+      "title": "1D Rectangle Array — Strided Trait Access",
+      "description": "Sum fields from BenchmarkRect[480,000] (16 bytes per element). Rectangle implements two traits: ICoordinate (X,Y at offset 0) and ISize (Width,Height at offset 8). Trait spans must stride over 16-byte elements to access 8-byte trait views — the core strided access pattern.",
+      "elementType": "BenchmarkRect",
+      "elementSize": 16,
+      "arrayLength": 480000,
+      "totalBytes": 7680000,
+      "bdnFilter": "TraitSharp.Benchmarks.RectSum1DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "rect-1d-coord-foreach",
+          "name": "Coordinate foreach — X + Y",
+          "description": "Sum X + Y using foreach. Coordinate trait at offset 0. Native Span foreach returns ref BenchmarkRect; TraitSpan foreach uses pointer-increment cursor striding 16 bytes per step.",
+          "baseline": "NativeSpan_Foreach_CoordSum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_Foreach_CoordSum1D",
+              "label": "Span<BenchmarkRect> foreach (ref)",
+              "codeSnippet": "foreach (ref var r in _array.AsSpan())\n    sum += r.X + r.Y;"
+            },
+            {
+              "name": "TraitSpan_Foreach_CoordSum1D",
+              "label": "TraitSpan foreach (ref readonly)",
+              "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateSpan())\n    sum += coord.X + coord.Y;",
+              "rootCause": "~1%: 16-byte stride over 8-byte trait at offset 0. Near-parity because offset is zero — no extra add for base offset."
+            }
+          ]
+        },
+        {
+          "id": "rect-1d-size-foreach",
+          "name": "Size foreach — Width + Height",
+          "description": "Sum Width + Height using foreach. Size trait at offset 8 (non-zero offset). Measures strided foreach with a non-zero trait offset.",
+          "baseline": "NativeSpan_Foreach_SizeSum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_Foreach_SizeSum1D",
+              "label": "Span<BenchmarkRect> foreach (ref)",
+              "codeSnippet": "foreach (ref var r in _array.AsSpan())\n    sum += r.Width + r.Height;"
+            },
+            {
+              "name": "TraitSpan_Foreach_SizeSum1D",
+              "label": "TraitSpan foreach (ref readonly)",
+              "codeSnippet": "foreach (ref readonly var size in _array.AsSizeSpan())\n    sum += size.Width + size.Height;"
+            }
+          ]
+        },
+        {
+          "id": "rect-1d-all-fields",
+          "name": "All Fields — X + Y + Width + Height",
+          "description": "Sum all 4 fields requiring both traits. Compares native foreach (single pointer, full struct), fused Zip enumerator (two pointer-increment cursors in lockstep), and dual indexer.",
+          "baseline": "NativeSpan_Foreach_AllFieldsSum1D",
+          "methods": [
+            {
+              "name": "NativeSpan_Foreach_AllFieldsSum1D",
+              "label": "Span<BenchmarkRect> foreach — all fields",
+              "codeSnippet": "foreach (ref var r in _array.AsSpan())\n    sum += r.X + r.Y + r.Width + r.Height;"
+            },
+            {
+              "name": "TraitSpan_ZipForeach_AllFieldsSum1D",
+              "label": "Zip Enumerator (fused pointer walk)",
+              "codeSnippet": "foreach (var pair in coordSpan.Zip(sizeSpan))\n    sum += pair.First.X + pair.First.Y\n         + pair.Second.Width + pair.Second.Height;",
+              "rootCause": "~12%: two AddByteOffset calls per MoveNext (dual pointer walk) vs single native pointer. Expected cost of trait-based dual-view access."
+            },
+            {
+              "name": "TraitSpan_DualIndexer_AllFieldsSum1D",
+              "label": "Two TraitSpan Indexers (reference)",
+              "codeSnippet": "for (int i = 0; i < coordSpan.Length; i++)\n    sum += coordSpan[i].X + coordSpan[i].Y\n         + sizeSpan[i].Width + sizeSpan[i].Height;",
+              "rootCause": "~51%: two bounds checks + two stride multiplies per element. Demonstrates why Zip enumerator exists."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "RectSum2DBenchmarks",
+      "title": "2D Rectangle Array — Strided Trait Access",
+      "description": "Sum fields from BenchmarkRect[800×600] with 2D access patterns and strided trait views.",
+      "elementType": "BenchmarkRect",
+      "elementSize": 16,
+      "arrayLength": 480000,
+      "totalBytes": 7680000,
+      "bdnFilter": "TraitSharp.Benchmarks.RectSum2DBenchmarks.*",
+      "comparisonGroups": [
+        {
+          "id": "rect-2d-coord-foreach",
+          "name": "2D Coordinate Row foreach — X + Y",
+          "description": "Sum X + Y using row-slice foreach. Native Span uses Slice+foreach; TraitSpan2D uses GetRow+foreach with pointer-increment cursors.",
+          "baseline": "NativeSpan_RowSlice_CoordSum2D",
+          "methods": [
+            {
+              "name": "NativeSpan_RowSlice_CoordSum2D",
+              "label": "Span<BenchmarkRect> Slice + foreach (ref)",
+              "codeSnippet": "for (int row = 0; row < Height; row++)\n    foreach (ref var r in flat.Slice(row * Width, Width))\n        sum += r.X + r.Y;"
+            },
+            {
+              "name": "TraitSpan2D_RowForeach_CoordSum2D",
+              "label": "TraitSpan2D GetRow + foreach",
+              "codeSnippet": "for (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;",
+              "rootCause": "~0.3%: stride arithmetic + per-row GetRow construction. Effectively at parity."
+            }
+          ]
+        },
+        {
+          "id": "rect-2d-all-fields",
+          "name": "2D All Fields — Row foreach (X + Y + Width + Height)",
+          "description": "Sum all 4 fields using row-based iteration. Compares native Slice+foreach, Zip row enumerator (fused dual-pointer walk per row), and dual 2D indexer.",
+          "baseline": "NativeSpan_RowSlice_AllFieldsSum2D",
+          "methods": [
+            {
+              "name": "NativeSpan_RowSlice_AllFieldsSum2D",
+              "label": "Span<BenchmarkRect> Slice + foreach — all fields",
+              "codeSnippet": "for (int row = 0; row < Height; row++)\n    foreach (ref var r in flat.Slice(row * Width, Width))\n        sum += r.X + r.Y + r.Width + r.Height;"
+            },
+            {
+              "name": "TraitSpan2D_RowForeach_AllFieldsSum2D",
+              "label": "Zip Row Enumerator (fused pointer walk)",
+              "codeSnippet": "var coordRow = coordSpan.GetRow(row);\nvar sizeRow = sizeSpan.GetRow(row);\nforeach (var pair in coordRow.Zip(sizeRow))\n    sum += pair.First.X + ... + pair.Second.Width + ...;",
+              "rootCause": "~25%: dual pointer cursors + per-row GetRow construction for both spans. Expected for 2D dual-trait access."
+            },
+            {
+              "name": "TraitSpan2D_DualIndexer_AllFieldsSum2D",
+              "label": "Two TraitSpan2D Indexers (reference)",
+              "codeSnippet": "for (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += coordSpan[row,col].X + ... + sizeSpan[row,col].Width + ...;",
+              "rootCause": "~100%: four bounds checks (row+col × 2 spans) + two stride multiplies per element. Worst-case access pattern."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

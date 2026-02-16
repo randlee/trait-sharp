@@ -5,45 +5,22 @@ namespace TraitSharp.Benchmarks;
 
 /// <summary>
 /// 1D array sum benchmarks: sum X + Y over BenchmarkPoint[480000].
-/// Compares native array access vs Span vs TraitSpan.
-/// All allocations in GlobalSetup — inner loops are identical.
+/// Compares native Span foreach vs TraitSpan foreach (pointer-increment enumerators).
+/// Indexer variants included as secondary reference.
+/// All allocations in GlobalSetup — inner loops are zero-alloc.
 /// </summary>
 [Config(typeof(FastBenchmarkConfig))]
 public class Sum1DBenchmarks : ArraySetupBase
 {
-    [Benchmark]
-    public long NativeArray_Sum1D()
-    {
-        long sum = 0;
-        var arr = _array;
-        for (int i = 0; i < arr.Length; i++)
-        {
-            sum += arr[i].X + arr[i].Y;
-        }
-        return sum;
-    }
+    // ── Primary: foreach (ref) — the idiomatic high-perf pattern ──
 
     [Benchmark(Baseline = true)]
-    public long NativeSpan_Sum1D()
+    public long NativeSpan_Foreach_Sum1D()
     {
         long sum = 0;
-        Span<BenchmarkPoint> span = _array.AsSpan();
-        for (int i = 0; i < span.Length; i++)
+        foreach (ref var pt in _array.AsSpan())
         {
-            sum += span[i].X + span[i].Y;
-        }
-        return sum;
-    }
-
-    [Benchmark]
-    public long TraitSpan_Sum1D()
-    {
-        long sum = 0;
-        var span = _array.AsCoordinateSpan();
-        for (int i = 0; i < span.Length; i++)
-        {
-            ref readonly var coord = ref span[i];
-            sum += coord.X + coord.Y;
+            sum += pt.X + pt.Y;
         }
         return sum;
     }
@@ -59,14 +36,42 @@ public class Sum1DBenchmarks : ArraySetupBase
         return sum;
     }
 
+    // ── Secondary: indexer access — for reference only ──
+
     [Benchmark]
-    public long TraitNativeSpan_Sum1D()
+    public long NativeSpan_Indexer_Sum1D()
     {
         long sum = 0;
-        ReadOnlySpan<CoordinateLayout> span = _array.AsCoordinateNativeSpan();
+        Span<BenchmarkPoint> span = _array.AsSpan();
         for (int i = 0; i < span.Length; i++)
         {
             sum += span[i].X + span[i].Y;
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public long TraitSpan_Indexer_Sum1D()
+    {
+        long sum = 0;
+        var span = _array.AsCoordinateSpan();
+        for (int i = 0; i < span.Length; i++)
+        {
+            ref readonly var coord = ref span[i];
+            sum += coord.X + coord.Y;
+        }
+        return sum;
+    }
+
+    // ── NativeSpan layout (zero-stride) — best-case baseline ──
+
+    [Benchmark]
+    public long NativeLayoutSpan_Foreach_Sum1D()
+    {
+        long sum = 0;
+        foreach (ref readonly var coord in _array.AsCoordinateNativeSpan())
+        {
+            sum += coord.X + coord.Y;
         }
         return sum;
     }

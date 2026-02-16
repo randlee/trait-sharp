@@ -1,0 +1,33 @@
+  <h2>🤖 AI Analysis Notes</h2>
+  <p class="scratchpad-meta">Last updated: <em>2026-02-16 22:30 UTC</em></p>
+
+  <!--
+    This file is maintained by the AI benchmark assistant.
+    It is NEVER overwritten by generate-report.py — only created if missing.
+    The AI appends dated entries below after each benchmark run.
+    To reset, delete this file and regenerate the report.
+  -->
+
+  <h3>2026-02-16 20:25 — Initial Baseline + Validation Run (RectSum1DBenchmarks)</h3>
+  <ul>
+    <li>✅ <strong>No regressions detected</strong> — all methods within ±2% of baseline (noise floor)</li>
+    <li>✅ <strong>Zip enumerator</strong> (188.1 µs) continues to outperform dual-indexed access (251.6 µs) by ~25%</li>
+    <li>✅ <strong>Zip vs native all-fields</strong>: 188.1 µs vs 199.5 µs — Zip is 5.7% faster than native Span accessing all 4 fields</li>
+    <li>Single-trait coord overhead: TraitSpan 176.6 µs vs NativeSpan 167.3 µs = 5.6% overhead</li>
+    <li>Single-trait size overhead: TraitSpan 175.5 µs vs NativeSpan 154.9 µs = 13.3% overhead (non-zero offset penalty)</li>
+    <li>📝 Baseline established from zip-enumerators branch (PR #17). This run validates consistency.</li>
+  </ul>
+
+  <h3>2026-02-16 22:30 — Foreach-First Rewrite: New Baseline (All 4 Classes)</h3>
+  <ul>
+    <li>✅ <strong>Major rewrite</strong>: All benchmarks now lead with <code>foreach (ref)</code> as primary pattern; indexers demoted to secondary reference</li>
+    <li>✅ <strong>Sum1D</strong>: TraitSpan foreach 106.6 µs vs NativeSpan 103.8 µs = <strong>2.7% overhead</strong> (target &lt;5% ✓)</li>
+    <li>✅ <strong>Sum2D</strong>: TraitSpan2D row foreach 106.6 µs vs NativeSpan row-slice 104.3 µs = <strong>2.2% overhead</strong> (target &lt;15% ✓)</li>
+    <li>✅ <strong>RectSum1D Coord</strong>: TraitSpan foreach 155.8 µs vs NativeSpan 154.2 µs = <strong>1.0% overhead</strong> (near-native)</li>
+    <li>✅ <strong>RectSum1D Size</strong>: TraitSpan foreach 159.7 µs vs NativeSpan 163.1 µs = <strong>2.1% FASTER</strong> than native (offset-8 trait)</li>
+    <li>✅ <strong>RectSum1D Zip</strong>: ZipForeach 173.5 µs vs NativeSpan AllFields 155.1 µs = <strong>11.9% overhead</strong> (2 pointer walks vs 1)</li>
+    <li>✅ <strong>RectSum2D Coord</strong>: TraitSpan2D row foreach 157.7 µs vs NativeSpan 157.2 µs = <strong>0.3% overhead</strong> (parity!)</li>
+    <li>✅ <strong>RectSum2D ZipRow</strong>: 244.1 µs vs NativeSpan AllFields 195.3 µs = <strong>25.0% overhead</strong> (expected: 2D + dual stride)</li>
+    <li>⚠️ <strong>Indexer penalty confirmed</strong>: 2D indexers 2.0x slower (TraitSpan2D) — validates foreach-first approach</li>
+    <li>📝 New baseline established with foreach-first patterns. Previous indexer-based baseline superseded.</li>
+  </ul>

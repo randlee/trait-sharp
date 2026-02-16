@@ -5,23 +5,25 @@ namespace TraitSharp.Benchmarks;
 
 /// <summary>
 /// 2D sum benchmarks for BenchmarkRect[800*600] — strided access (layout smaller than source).
-/// Each benchmark pair does identical work: NativeSpan baseline sums the same fields as the TraitSpan2D variant.
+/// Primary comparisons use foreach (ref) and row iteration — the idiomatic high-perf patterns.
+/// Indexer variants included as secondary reference.
 /// </summary>
 [Config(typeof(FastBenchmarkConfig))]
 public class RectSum2DBenchmarks : RectArraySetupBase
 {
-    // ── Coordinate view: sum X + Y (2 fields at offset 0) ──
+    // ══════════════════════════════════════════════════════════════
+    //  Coordinate view: sum X + Y (2 fields at offset 0)
+    // ══════════════════════════════════════════════════════════════
 
     [Benchmark(Baseline = true)]
-    public long NativeSpan_CoordSum2D()
+    public long NativeSpan_RowSlice_CoordSum2D()
     {
         long sum = 0;
         Span<BenchmarkRect> flat = _array.AsSpan();
         for (int row = 0; row < Height; row++)
         {
-            for (int col = 0; col < Width; col++)
+            foreach (ref var r in flat.Slice(row * Width, Width))
             {
-                ref var r = ref flat[row * Width + col];
                 sum += r.X + r.Y;
             }
         }
@@ -29,7 +31,22 @@ public class RectSum2DBenchmarks : RectArraySetupBase
     }
 
     [Benchmark]
-    public long TraitSpan2D_CoordSum2D()
+    public long TraitSpan2D_RowForeach_CoordSum2D()
+    {
+        long sum = 0;
+        var span2d = _array.AsCoordinateSpan2D(Width, Height);
+        for (int row = 0; row < span2d.Height; row++)
+        {
+            foreach (ref readonly var coord in span2d.GetRow(row))
+            {
+                sum += coord.X + coord.Y;
+            }
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public long TraitSpan2D_Indexer_CoordSum2D()
     {
         long sum = 0;
         var span2d = _array.AsCoordinateSpan2D(Width, Height);
@@ -44,35 +61,19 @@ public class RectSum2DBenchmarks : RectArraySetupBase
         return sum;
     }
 
-    [Benchmark]
-    public long TraitSpan2D_CoordRowSum()
-    {
-        long sum = 0;
-        var span2d = _array.AsCoordinateSpan2D(Width, Height);
-        for (int row = 0; row < span2d.Height; row++)
-        {
-            var rowSpan = span2d.GetRow(row);
-            for (int i = 0; i < rowSpan.Length; i++)
-            {
-                ref readonly var coord = ref rowSpan[i];
-                sum += coord.X + coord.Y;
-            }
-        }
-        return sum;
-    }
-
-    // ── Both views: sum all 4 fields via two trait spans ──
+    // ══════════════════════════════════════════════════════════════
+    //  Both views: sum all 4 fields — dual trait access patterns
+    // ══════════════════════════════════════════════════════════════
 
     [Benchmark]
-    public long NativeSpan_AllFieldsSum2D()
+    public long NativeSpan_RowSlice_AllFieldsSum2D()
     {
         long sum = 0;
         Span<BenchmarkRect> flat = _array.AsSpan();
         for (int row = 0; row < Height; row++)
         {
-            for (int col = 0; col < Width; col++)
+            foreach (ref var r in flat.Slice(row * Width, Width))
             {
-                ref var r = ref flat[row * Width + col];
                 sum += r.X + r.Y + r.Width + r.Height;
             }
         }
@@ -80,7 +81,26 @@ public class RectSum2DBenchmarks : RectArraySetupBase
     }
 
     [Benchmark]
-    public long TraitSpan2D_BothSum2D()
+    public long TraitSpan2D_RowForeach_AllFieldsSum2D()
+    {
+        long sum = 0;
+        var coordSpan = _array.AsCoordinateSpan2D(Width, Height);
+        var sizeSpan = _array.AsSizeSpan2D(Width, Height);
+        for (int row = 0; row < Height; row++)
+        {
+            // Walk both row spans with foreach — pointer-increment cursors
+            var coordRow = coordSpan.GetRow(row);
+            var sizeRow = sizeSpan.GetRow(row);
+            foreach (var pair in coordRow.Zip(sizeRow))
+            {
+                sum += pair.First.X + pair.First.Y + pair.Second.Width + pair.Second.Height;
+            }
+        }
+        return sum;
+    }
+
+    [Benchmark]
+    public long TraitSpan2D_DualIndexer_AllFieldsSum2D()
     {
         long sum = 0;
         var coordSpan = _array.AsCoordinateSpan2D(Width, Height);

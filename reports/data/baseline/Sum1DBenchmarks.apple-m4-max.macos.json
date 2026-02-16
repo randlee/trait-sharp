@@ -1,0 +1,87 @@
+{
+  "metadata": {
+    "benchmarkClass": "Sum1DBenchmarks",
+    "title": "1D Point Array \u2014 Coordinate Access",
+    "description": "Sum X + Y over BenchmarkPoint[480,000] (8 bytes per element). Measures overhead of TraitSpan vs native Span for a simple layout where trait size equals source size (no stride gap).",
+    "elementType": "BenchmarkPoint",
+    "elementSize": 8,
+    "arrayLength": 480000,
+    "totalBytes": 3840000,
+    "timestamp": "2026-02-16T22:30:00Z",
+    "environment": {
+      "os": "macOS 15.3.1",
+      "osSlug": "macos",
+      "cpu": "Apple M4 Max",
+      "cpuId": "apple-m4-max",
+      "coresLogical": 16,
+      "dotnetSdk": "9.0.200",
+      "runtime": ".NET 9.0.2",
+      "benchmarkDotNet": "0.14.0"
+    }
+  },
+  "comparisonGroups": [
+    {
+      "id": "point-1d-foreach",
+      "name": "Coordinate Sum \u2014 foreach (ref)",
+      "description": "Sum two int fields using foreach with ref. Native Span.GetEnumerator returns ref T; TraitSpan uses pointer-increment cursors. Indexers shown for reference \u2014 they carry bounds-check overhead that foreach avoids.",
+      "baseline": "NativeSpan_Foreach_Sum1D",
+      "methods": [
+        {
+          "name": "NativeSpan_Foreach_Sum1D",
+          "label": "Span<T> foreach (ref)",
+          "codeSnippet": "foreach (ref var pt in _array.AsSpan())\n    sum += pt.X + pt.Y;",
+          "isBaseline": true,
+          "mean_us": 103.8,
+          "error_us": 0.2,
+          "stddev_us": 0.11,
+          "gbPerSec": 35.3,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan_Foreach_Sum1D",
+          "label": "TraitSpan foreach (ref readonly)",
+          "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateSpan())\n    sum += coord.X + coord.Y;",
+          "isBaseline": false,
+          "mean_us": 106.6,
+          "error_us": 0.28,
+          "stddev_us": 0.15,
+          "gbPerSec": 34.37,
+          "allocated": 0
+        },
+        {
+          "name": "NativeLayoutSpan_Foreach_Sum1D",
+          "label": "NativeSpan foreach (contiguous fast-path)",
+          "codeSnippet": "foreach (ref readonly var coord in _array.AsCoordinateNativeSpan())\n    sum += coord.X + coord.Y;",
+          "isBaseline": false,
+          "mean_us": 103.9,
+          "error_us": 0.13,
+          "stddev_us": 0.07,
+          "gbPerSec": 35.27,
+          "allocated": 0
+        },
+        {
+          "name": "NativeSpan_Indexer_Sum1D",
+          "label": "Span<T> Indexer (reference)",
+          "codeSnippet": "Span<BenchmarkPoint> span = _array.AsSpan();\nfor (int i = 0; i < span.Length; i++)\n    sum += span[i].X + span[i].Y;",
+          "isBaseline": false,
+          "mean_us": 112.6,
+          "error_us": 0.23,
+          "stddev_us": 0.12,
+          "gbPerSec": 32.55,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan_Indexer_Sum1D",
+          "label": "TraitSpan Indexer (reference)",
+          "codeSnippet": "var span = _array.AsCoordinateSpan();\nfor (int i = 0; i < span.Length; i++)\n{\n    ref readonly var coord = ref span[i];\n    sum += coord.X + coord.Y;\n}",
+          "isBaseline": false,
+          "mean_us": 121.0,
+          "error_us": 0.35,
+          "stddev_us": 0.19,
+          "gbPerSec": 30.28,
+          "allocated": 0
+        }
+      ]
+    }
+  ]
+}

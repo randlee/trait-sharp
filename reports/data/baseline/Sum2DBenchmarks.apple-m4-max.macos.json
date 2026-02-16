@@ -1,0 +1,98 @@
+{
+  "metadata": {
+    "benchmarkClass": "Sum2DBenchmarks",
+    "title": "2D Point Array \u2014 Coordinate Access",
+    "description": "Sum X + Y over BenchmarkPoint[800\u00d7600] with 2D access patterns. Measures TraitSpan2D overhead for row-based foreach iteration.",
+    "elementType": "BenchmarkPoint",
+    "elementSize": 8,
+    "arrayLength": 480000,
+    "totalBytes": 3840000,
+    "timestamp": "2026-02-16T22:30:00Z",
+    "environment": {
+      "os": "macOS 15.3.1",
+      "osSlug": "macos",
+      "cpu": "Apple M4 Max",
+      "cpuId": "apple-m4-max",
+      "coresLogical": 16,
+      "dotnetSdk": "9.0.200",
+      "runtime": ".NET 9.0.2",
+      "benchmarkDotNet": "0.14.0"
+    }
+  },
+  "comparisonGroups": [
+    {
+      "id": "point-2d-row-foreach",
+      "name": "Coordinate Sum \u2014 Row-Slice foreach",
+      "description": "Sum two int fields using row-slice foreach. Native Span uses Slice()+foreach; TraitSpan2D uses GetRow()+foreach with pointer-increment cursors. Flat foreach and indexers shown for reference.",
+      "baseline": "NativeSpan_RowSlice_Sum2D",
+      "methods": [
+        {
+          "name": "NativeSpan_RowSlice_Sum2D",
+          "label": "Span<T> Slice + foreach (ref)",
+          "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    foreach (ref var pt in flat.Slice(row * Width, Width))\n        sum += pt.X + pt.Y;",
+          "isBaseline": true,
+          "mean_us": 104.3,
+          "error_us": 0.15,
+          "stddev_us": 0.08,
+          "gbPerSec": 35.14,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan2D_RowForeach_Sum2D",
+          "label": "TraitSpan2D GetRow + foreach",
+          "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    foreach (ref readonly var coord in span2d.GetRow(row))\n        sum += coord.X + coord.Y;",
+          "isBaseline": false,
+          "mean_us": 106.6,
+          "error_us": 0.22,
+          "stddev_us": 0.12,
+          "gbPerSec": 34.37,
+          "allocated": 0
+        },
+        {
+          "name": "NativeLayoutSpan_RowSlice_Sum2D",
+          "label": "NativeSpan Slice + foreach (contiguous fast-path)",
+          "codeSnippet": "ReadOnlySpan<CoordinateLayout> flat = _array.AsCoordinateNativeSpan();\nfor (int row = 0; row < Height; row++)\n    foreach (ref readonly var coord in flat.Slice(row * Width, Width))\n        sum += coord.X + coord.Y;",
+          "isBaseline": false,
+          "mean_us": 104.1,
+          "error_us": 0.18,
+          "stddev_us": 0.1,
+          "gbPerSec": 35.21,
+          "allocated": 0
+        },
+        {
+          "name": "NativeSpan_Foreach_Sum2D",
+          "label": "Span<T> flat foreach (reference \u2014 ignores 2D)",
+          "codeSnippet": "foreach (ref var pt in _array.AsSpan())\n    sum += pt.X + pt.Y;",
+          "isBaseline": false,
+          "mean_us": 103.8,
+          "error_us": 0.2,
+          "stddev_us": 0.11,
+          "gbPerSec": 35.3,
+          "allocated": 0
+        },
+        {
+          "name": "NativeSpan_Indexer_Sum2D",
+          "label": "Span<T> [row*W+col] Indexer (reference)",
+          "codeSnippet": "Span<BenchmarkPoint> flat = _array.AsSpan();\nfor (int row = 0; row < Height; row++)\n    for (int col = 0; col < Width; col++)\n        sum += flat[row * Width + col].X + ...;",
+          "isBaseline": false,
+          "mean_us": 111.1,
+          "error_us": 0.19,
+          "stddev_us": 0.1,
+          "gbPerSec": 32.99,
+          "allocated": 0
+        },
+        {
+          "name": "TraitSpan2D_Indexer_Sum2D",
+          "label": "TraitSpan2D [row, col] Indexer (reference)",
+          "codeSnippet": "var span2d = _array.AsCoordinateSpan2D(Width, Height);\nfor (int row = 0; row < span2d.Height; row++)\n    for (int col = 0; col < span2d.Width; col++)\n        sum += span2d[row, col].X + span2d[row, col].Y;",
+          "isBaseline": false,
+          "mean_us": 144.9,
+          "error_us": 0.41,
+          "stddev_us": 0.22,
+          "gbPerSec": 25.29,
+          "allocated": 0
+        }
+      ]
+    }
+  ]
+}
